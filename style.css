@@ -322,6 +322,119 @@ input[type="range"] {
 
 #export-hint { text-align: center; }
 
+/* ---------- Centro de Recursos ---------- */
+
+.group-resources {
+  background: var(--crema-calido);
+  border-top: 2px solid var(--arena);
+  margin: 0 -22px -60px;
+  padding: 20px 22px 32px;
+}
+
+.resource-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-outline {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  background: transparent;
+  border: 1.5px solid var(--espresso);
+  color: var(--espresso);
+  font-family: 'DM Mono', monospace;
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: .3px;
+  padding: 12px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.btn-outline:hover { background: var(--espresso); color: var(--marfil); }
+.btn-outline:disabled,
+.btn-outline[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
+/* ---------- Footer de créditos — estética Vástago Design Studio ---------- */
+
+.vastago-footer {
+  margin: 28px -22px -60px;
+  padding: 28px 22px 20px;
+  background: #212121;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  color: #FFFFFF;
+}
+
+.vastago-footer-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.vastago-footer-logo {
+  max-height: 22px;
+  width: auto;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.vastago-footer-cta {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  background: #F6FF65;
+  color: #212121;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 9px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.vastago-footer-cta:hover { opacity: 0.9; }
+
+.vastago-footer-grid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.vastago-footer-col { display: flex; flex-direction: column; }
+
+.vastago-footer-grid a {
+  color: #FFFFFF;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.vastago-footer-grid a:hover { opacity: 0.65; }
+
+.vastago-footer-location {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.vastago-footer-bottom {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
 /* ---------- Stage ---------- */
 
 .stage {

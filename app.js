@@ -1312,6 +1312,7 @@ function buildLogoVariantControl() {
   sel.value = state.logoVariant;
   sel.addEventListener('change', () => {
     state.logoVariant = sel.value;
+    syncResourceButtons();
     scheduleRedraw();
   });
 }
@@ -1421,6 +1422,99 @@ function buildExport() {
 }
 
 /* ---------------------------------------------------------
+   Centro de Recursos (manual de marca + exportadores de logo)
+   --------------------------------------------------------- */
+
+// Exporta la variante de logo seleccionada como PNG a color, en alta
+// resolución (2000px de ancho), teñido exactamente al Color de Logo actual.
+function exportLogoPNG() {
+  const variant = LOGO_VARIANTS[state.logoVariant];
+  if (!variant || variant.kind === 'none') return;
+
+  const targetW = 2000;
+  const off = document.createElement('canvas');
+  const octx = off.getContext('2d');
+
+  if (variant.kind === 'asset') {
+    const img = imageCache.get(variant.file);
+    if (!img) return;
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const targetH = Math.round(targetW * (ih / iw));
+    off.width = targetW;
+    off.height = targetH;
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    // 1-2. Dibuja el logo a tamaño completo en el canvas temporal offscreen.
+    octx.drawImage(img, 0, 0, targetW, targetH);
+    // 3. Tiñe exactamente al Color de Logo elegido, preservando la transparencia.
+    octx.globalCompositeOperation = 'source-in';
+    octx.fillStyle = state.logoColor;
+    octx.fillRect(0, 0, targetW, targetH);
+  } else if (variant.kind === 'circular') {
+    off.width = targetW;
+    off.height = targetW;
+    drawCircularBikeIsotype(octx, state.logoColor, targetW / 2, targetW / 2, targetW * 0.92);
+  } else if (variant.kind === 'letter') {
+    off.width = targetW;
+    off.height = targetW;
+    octx.save();
+    octx.fillStyle = state.logoColor;
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.font = `700 ${Math.round(targetW * 0.72)}px 'Ancizar Serif', Georgia, serif`;
+    octx.fillText(variant.letter, targetW / 2, targetW / 2);
+    octx.restore();
+  } else {
+    return;
+  }
+
+  // 4. Exporta el canvas temporal y fuerza la descarga con nombre dinámico.
+  const dataURL = off.toDataURL('image/png', 1.0);
+  const a = document.createElement('a');
+  a.href = dataURL;
+  a.download = `Bictoria-Logo-${state.logoColor.replace('#', '')}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Fuerza la descarga del archivo .svg nativo (sin alterar) de la variante
+// de logo actualmente seleccionada, directamente desde ./assets/.
+function exportLogoSVG() {
+  const variant = LOGO_VARIANTS[state.logoVariant];
+  if (!variant || variant.kind !== 'asset') return;
+  const a = document.createElement('a');
+  a.href = `./assets/${variant.file}`;
+  a.download = variant.file;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function syncResourceButtons() {
+  const variant = LOGO_VARIANTS[state.logoVariant];
+  const pngBtn = document.getElementById('ctl-export-logo-png');
+  const svgBtn = document.getElementById('ctl-export-logo-svg');
+
+  const pngDisabled = !variant || variant.kind === 'none';
+  pngBtn.disabled = pngDisabled;
+  pngBtn.title = pngDisabled ? 'Selecciona una variante de logo para exportar.' : '';
+
+  const svgDisabled = !variant || variant.kind !== 'asset';
+  svgBtn.disabled = svgDisabled;
+  svgBtn.title = svgDisabled
+    ? 'Esta variante no tiene un archivo vectorial nativo en ./assets/.'
+    : 'Descarga el SVG original sin alteraciones.';
+}
+
+function buildResourceCenter() {
+  document.getElementById('ctl-export-logo-png').addEventListener('click', exportLogoPNG);
+  document.getElementById('ctl-export-logo-svg').addEventListener('click', exportLogoSVG);
+  syncResourceButtons();
+}
+
+/* ---------------------------------------------------------
    Boot
    --------------------------------------------------------- */
 
@@ -1434,6 +1528,7 @@ async function boot() {
   buildBadgeGrid();
   buildCanvasInteraction();
   buildExport();
+  buildResourceCenter();
   applyTemplateLabels();
 
   redraw(); // show "Cargando…" placeholder immediately
