@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bictoria Brand Studio</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Ancizar+Serif:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Precarga forzada de fuentes para que estén listas antes del primer render del canvas -->
+<div class="font-preload" aria-hidden="true">
+  <span style="font-family:'Ancizar Serif'; font-weight:400;">preload</span>
+  <span style="font-family:'Ancizar Serif'; font-weight:600;">preload</span>
+  <span style="font-family:'Ancizar Serif'; font-weight:700;">preload</span>
+  <span style="font-family:'Ancizar Serif'; font-weight:400; font-style:italic;">preload</span>
+  <span style="font-family:'DM Mono'; font-weight:400;">preload</span>
+  <span style="font-family:'DM Mono'; font-weight:500;">preload</span>
+</div>
+
+<div class="app-shell">
+
+  <aside class="panel" id="panel">
+    <header class="panel-brand">
+      <h1>Bictoria <span>Brand Studio</span></h1>
+      <p>Generador de piezas gráficas de marca</p>
+    </header>
+
+    <section class="group">
+      <h2>1 · Formato de salida</h2>
+      <select id="ctl-format" class="select"></select>
+    </section>
+
+    <section class="group">
+      <h2>2 · Plantilla de composición</h2>
+      <div class="segmented" id="ctl-template">
+        <button type="button" data-template="A" class="active">A · Ficha</button>
+        <button type="button" data-template="B">B · Editorial</button>
+        <button type="button" data-template="C">C · Banner</button>
+      </div>
+      <p class="hint" id="template-hint"></p>
+    </section>
+
+    <section class="group">
+      <h2>3 · Fotografía</h2>
+      <label class="file-drop" id="photo-drop">
+        <input type="file" id="ctl-photo" accept="image/*">
+        <span id="photo-drop-label">Subir fotografía…</span>
+      </label>
+      <button type="button" class="btn-ghost small" id="ctl-photo-remove">Quitar fotografía</button>
+
+      <div class="field">
+        <label>Zoom <output id="out-zoom">100%</output></label>
+        <input type="range" id="ctl-zoom" min="100" max="250" value="100" step="1">
+      </div>
+      <div class="field">
+        <label>Posición horizontal <output id="out-offx">0</output></label>
+        <input type="range" id="ctl-offx" min="-100" max="100" value="0" step="1">
+      </div>
+      <div class="field">
+        <label>Posición vertical <output id="out-offy">0</output></label>
+        <input type="range" id="ctl-offy" min="-100" max="100" value="0" step="1">
+      </div>
+
+      <label class="checkbox" id="field-show-photo-b">
+        <input type="checkbox" id="ctl-show-photo-b">
+        Mostrar fotografía enmarcada
+      </label>
+    </section>
+
+    <section class="group">
+      <h2>4 · Textos</h2>
+
+      <div class="field" id="field-title">
+        <label id="label-title">Título del producto</label>
+        <input type="text" id="ctl-title" maxlength="60">
+      </div>
+      <div class="field" id="field-subtitle">
+        <label id="label-subtitle">Colección / Subtítulo</label>
+        <input type="text" id="ctl-subtitle" maxlength="60">
+      </div>
+      <div class="field" id="field-price">
+        <label id="label-price">Precio</label>
+        <input type="text" id="ctl-price" maxlength="30">
+      </div>
+      <div class="field" id="field-ribbon-color">
+        <label>Color de Cinta de Precio</label>
+        <div class="swatches" id="ctl-ribbon-colors"></div>
+      </div>
+      <div class="field" id="field-secondary">
+        <label id="label-secondary">Texto secundario</label>
+        <textarea id="ctl-secondary" maxlength="120" rows="2"></textarea>
+      </div>
+
+      <div class="field" id="field-phrases">
+        <label>Frases del manual</label>
+        <div class="phrase-list" id="ctl-phrases"></div>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>5 · Color de tema</h2>
+      <div class="swatches" id="ctl-colors"></div>
+
+      <div class="field" id="field-logo-color">
+        <label>Color del logotipo</label>
+        <div class="segmented" id="ctl-logo-color">
+          <button type="button" data-logo-color="dark">Marrón Oscuro</button>
+          <button type="button" data-logo-color="cream">Blanco / Marfil</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>6 · Badges / Stickers</h2>
+      <p class="hint">Haz clic en una miniatura para añadirla al centro del lienzo. Arrástrala con el mouse para moverla; haz clic sobre ella para seleccionarla.</p>
+      <div class="badge-grid" id="ctl-badges"></div>
+
+      <div id="badge-inspector" class="is-hidden">
+        <div class="field">
+          <label>Escala <output id="out-badge-scale">100%</output></label>
+          <input type="range" id="ctl-badge-scale" min="50" max="200" value="100" step="5">
+        </div>
+        <div class="field">
+          <label>Rotación <output id="out-badge-rotation">0°</output></label>
+          <input type="range" id="ctl-badge-rotation" min="-45" max="45" value="0" step="1">
+        </div>
+        <button type="button" class="btn-ghost small" id="ctl-badge-remove">Quitar badge seleccionado</button>
+      </div>
+    </section>
+
+    <section class="group group-export">
+      <h2>7 · Exportar</h2>
+      <button type="button" class="btn-primary" id="ctl-export">Descargar PNG en Alta Calidad</button>
+      <p class="hint" id="export-hint"></p>
+    </section>
+
+  </aside>
+
+  <main class="stage">
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="1080" height="1080"></canvas>
+    </div>
+  </main>
+
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
