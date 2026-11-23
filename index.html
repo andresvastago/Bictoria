@@ -42,6 +42,7 @@
         <button type="button" data-template="A" class="active">A · Ficha</button>
         <button type="button" data-template="B">B · Editorial</button>
         <button type="button" data-template="C">C · Banner</button>
+        <button type="button" data-template="D">D · Manifiesto</button>
       </div>
       <p class="hint" id="template-hint"></p>
     </section>
@@ -92,9 +93,17 @@
         <label>Color de Cinta de Precio</label>
         <div class="swatches" id="ctl-ribbon-colors"></div>
       </div>
+      <div class="field" id="field-web">
+        <label>Sitio web (cinta naranja)</label>
+        <input type="text" id="ctl-web" maxlength="40">
+      </div>
       <div class="field" id="field-secondary">
         <label id="label-secondary">Texto secundario</label>
         <textarea id="ctl-secondary" maxlength="120" rows="2"></textarea>
+      </div>
+      <div class="field" id="field-headline-d">
+        <label>Titular (multilínea, Enter = salto de línea)</label>
+        <textarea id="ctl-headline-d" maxlength="80" rows="4"></textarea>
       </div>
 
       <div class="field" id="field-phrases">
@@ -107,21 +116,34 @@
       <h2>5 · Color de tema</h2>
       <div class="swatches" id="ctl-colors"></div>
 
+      <div class="field" id="field-bg-color-d">
+        <label>Color de Fondo (Plantilla D)</label>
+        <div class="swatches" id="ctl-bg-color-d"></div>
+      </div>
+
+      <div class="field" id="field-logo-variant">
+        <label>Variante de Logo</label>
+        <select id="ctl-logo-variant" class="select"></select>
+      </div>
       <div class="field" id="field-logo-color">
-        <label>Color del logotipo</label>
-        <div class="segmented" id="ctl-logo-color">
-          <button type="button" data-logo-color="dark">Marrón Oscuro</button>
-          <button type="button" data-logo-color="cream">Blanco / Marfil</button>
-        </div>
+        <label>Color del Logo</label>
+        <div class="swatches" id="ctl-logo-colors"></div>
       </div>
     </section>
 
     <section class="group">
       <h2>6 · Badges / Stickers</h2>
-      <p class="hint">Haz clic en una miniatura para añadirla al centro del lienzo. Arrástrala con el mouse para moverla; haz clic sobre ella para seleccionarla.</p>
+      <p class="hint">Haz clic en una miniatura para añadirla al centro del lienzo. Arrástrala para moverla; usa el manejador superior (línea + círculo) para rotar, la esquina inferior derecha para escalar, y el botón ✕ para eliminar.</p>
       <div class="badge-grid" id="ctl-badges"></div>
 
       <div id="badge-inspector" class="is-hidden">
+        <div class="field">
+          <label>Estilo de Badge</label>
+          <div class="segmented small" id="ctl-badge-backdrop">
+            <button type="button" data-backdrop="yes">Con fondo</button>
+            <button type="button" data-backdrop="no">Sin fondo</button>
+          </div>
+        </div>
         <div class="field">
           <label>Escala <output id="out-badge-scale">100%</output></label>
           <input type="range" id="ctl-badge-scale" min="50" max="200" value="100" step="5">

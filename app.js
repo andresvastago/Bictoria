@@ -16,7 +16,7 @@ const COLORS = {
   oliva: '#5E7153',
 };
 
-// Fondos oscuros del manual de marca: fuerzan textos/líneas claras y el logo "cream".
+// Fondos oscuros del manual de marca: fuerzan textos/líneas claras.
 const DARK_BG = new Set([COLORS.espresso, COLORS.cuero, COLORS.oliva]);
 function inkFor(bgHex) {
   return DARK_BG.has(bgHex) ? COLORS.marfil : COLORS.espresso;
@@ -51,14 +51,8 @@ const PHRASES = [
 ];
 
 // Monochrome brand-ink SVGs share this baked-in fill color; swapping it lets
-// us derive "dark" / "cream" ink variants from a single source file.
+// us derive flat-ink variants from a single source file without a canvas tint.
 const MONO_SOURCE_HEX = '#3e2e17';
-
-const ASSETS = {
-  logoDark: 'logo-bictoria-dark.svg',
-  logoCream: 'logo-bictoria-cream.svg',
-  tab: { file: 'tab-bici.svg', mono: true },
-};
 
 const BADGES = [
   { id: 'estampilla', label: 'Estampilla', file: 'badge-estampilla.svg', mono: false },
@@ -71,6 +65,17 @@ const BADGES = [
   { id: 'sellotexto', label: 'Sello Bictr', file: 'badge-sello-texto.svg', mono: true },
   { id: 'etiqueta', label: 'Etiqueta', file: 'badge-etiqueta.svg', mono: true },
 ];
+
+// Variantes de logotipo del manual de marca. El color se aplica en tiempo real
+// con un tinte offscreen (ver getTintedImage), no con archivos pre-coloreados.
+const LOGO_VARIANTS = {
+  main: { label: 'Logotipo Principal (Bictoria)', kind: 'asset', file: 'logo-bictoria-horizontal.svg' },
+  circular: { label: 'Isotipo Bicicleta Circular', kind: 'circular' },
+  tab: { label: 'Pestaña Superior Bicicleta', kind: 'asset', file: 'tab-bici.svg' },
+  monograma: { label: 'Monograma B', kind: 'letter', letter: 'B' },
+  sello2005: { label: 'Sello Vertical 2005 / Bictoria', kind: 'asset', file: 'badge-bictr-2005.svg' },
+  none: { label: 'Sin logo', kind: 'none' },
+};
 
 const LABELS_BY_TEMPLATE = {
   A: {
@@ -91,15 +96,27 @@ const LABELS_BY_TEMPLATE = {
     price: 'Precio',
     secondary: 'URL / pie de página',
   },
+  D: {
+    title: null,
+    subtitle: null,
+    price: null,
+    secondary: null,
+  },
 };
 
 const TEMPLATE_HINTS = {
-  A: 'Ficha de producto con foto, pestaña de marca y barra de datos inferior.',
+  A: 'Ficha de producto con foto, pestaña de marca y barra de datos inferior en dos niveles.',
   B: 'Pieza editorial: fondo de color de marca, logotipo y frase.',
   C: 'Banner de dos columnas: texto de marca + fotografía.',
+  D: 'Post solo tipográfico: manifiesto de marca sin fotografía, con sellos.',
 };
 
-const DEFAULT_SECONDARY = { A: 'Envíos nacionales Colombia', B: 'www.bictoria.com', C: 'www.bictoria.com' };
+const DEFAULT_SECONDARY = {
+  A: 'Envíos nacionales Colombia',
+  B: 'www.bictoria.com',
+  C: 'www.bictoria.com',
+  D: 'www.bictoria.com',
+};
 
 /* ---------------------------------------------------------
    State
@@ -114,11 +131,15 @@ const state = {
     subtitle: 'COLECCIÓN RUTAS',
     price: '$79.700 COP',
     secondary: DEFAULT_SECONDARY.A,
+    web: 'www.bictoria.com',
+    headlineD: 'La vida\nen Bici\nrueda\nmejor',
   },
   themeColor: COLORS.marfil,
-  logoColor: 'dark', // 'dark' | 'cream' — se recalcula al cambiar el tema, pero el usuario puede forzarlo.
+  bgColorD: COLORS.naranja,
+  logoVariant: 'main',
+  logoColor: COLORS.espresso, // hex — se recalcula al cambiar el tema, pero el usuario puede forzarlo.
   ribbonColor: COLORS.amarilloPalido,
-  badges: [], // { uid, defId, x, y, scale, rotation }
+  badges: [], // { uid, defId, x, y, scale, rotation, backdrop }
   selectedBadgeUid: null,
 };
 
@@ -131,7 +152,7 @@ function nextBadgeUid() {
    Asset loading / caching
    --------------------------------------------------------- */
 
-const imageCache = new Map(); // key -> HTMLImageElement
+const imageCache = new Map(); // key -> HTMLImageElement | HTMLCanvasElement
 const svgTextCache = new Map(); // path -> raw svg text
 
 function loadImageFromURL(url) {
@@ -180,25 +201,37 @@ async function loadMonoSVG(path, hexColor) {
   }
 }
 
-function getLogo(mode) {
-  const file = mode === 'cream' ? ASSETS.logoCream : ASSETS.logoDark;
-  return imageCache.get(file) || null;
+// Tiñe cualquier imagen ya cargada a un color plano exacto, preservando su
+// transparencia, usando un canvas offscreen + globalCompositeOperation
+// 'source-in'. Así un único asset sirve para cualquiera de los 8 colores.
+function getTintedImage(cacheKey, img, colorHex) {
+  if (!img) return null;
+  const key = `tint:${cacheKey}|${colorHex}`;
+  if (imageCache.has(key)) return imageCache.get(key);
+  const off = document.createElement('canvas');
+  off.width = img.naturalWidth || img.width;
+  off.height = img.naturalHeight || img.height;
+  const octx = off.getContext('2d');
+  octx.drawImage(img, 0, 0, off.width, off.height);
+  octx.globalCompositeOperation = 'source-in';
+  octx.fillStyle = colorHex;
+  octx.fillRect(0, 0, off.width, off.height);
+  imageCache.set(key, off);
+  return off;
 }
-function getTab() {
-  return imageCache.get(`${ASSETS.tab.file}|${COLORS.espresso}`) || null;
-}
+
 function getBadgeImage(badgeDef) {
   if (!badgeDef) return null;
-  if (badgeDef.id === 'tab') return getTab();
   if (badgeDef.mono) return imageCache.get(`${badgeDef.file}|${COLORS.espresso}`) || null;
   return imageCache.get(badgeDef.file) || null;
 }
 
 async function preloadAllAssets() {
   const jobs = [
-    loadPlainSVG(ASSETS.logoDark),
-    loadPlainSVG(ASSETS.logoCream),
-    loadMonoSVG(ASSETS.tab.file, COLORS.espresso),
+    loadPlainSVG('tab-bici.svg'),
+    loadPlainSVG('logo-bictoria-horizontal.svg'),
+    loadPlainSVG('icon-bici-line.svg'),
+    loadPlainSVG('badge-bictr-2005.svg'),
   ];
   for (const b of BADGES) {
     jobs.push(b.mono ? loadMonoSVG(b.file, COLORS.espresso) : loadPlainSVG(b.file));
@@ -239,6 +272,21 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x + w, y + h, x, y + h, rr);
   ctx.arcTo(x, y + h, x, y, rr);
   ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+// Rectángulo con esquinas superiores a escuadra y solo las inferiores
+// redondeadas — la silueta exacta de la pestaña de marca.
+function roundRectBottomOnly(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y);
   ctx.closePath();
 }
 
@@ -306,27 +354,80 @@ function drawImageContain(ctx, img, cx, cy, maxW, maxH, align = 'center') {
   return { w, h, x, y };
 }
 
-// Dibuja el logotipo con fondo 100% transparente. Si el asset no cargó, cae a
-// un lockup tipográfico exacto en la tinta correspondiente, también sin fondo.
-function drawLogo(ctx, mode, cx, cy, maxW, maxH, align = 'center') {
-  const img = getLogo(mode);
-  if (img) return drawImageContain(ctx, img, cx, cy, maxW, maxH, align);
+// Dibuja un isotipo circular: un círculo relleno del color dado con la
+// silueta de la bicicleta recortada (destination-out), dejando ver el fondo
+// de la composición a través del icono — p. ej. círculo café con bici naranja.
+function drawCircularBikeIsotype(ctx, colorHex, cx, cy, size) {
+  const r = size / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = colorHex;
+  ctx.fill();
 
-  const colorHex = mode === 'cream' ? COLORS.marfil : COLORS.espresso;
+  const bikeImg = imageCache.get('icon-bici-line.svg');
+  if (bikeImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'destination-out';
+    const iw = bikeImg.naturalWidth || bikeImg.width;
+    const ih = bikeImg.naturalHeight || bikeImg.height;
+    const scale = (size * 0.58) / Math.max(iw, ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    ctx.drawImage(bikeImg, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// Dibuja la variante de logotipo elegida, teñida al color exacto elegido,
+// siempre con fondo 100% transparente. Si el asset no cargó, cae a un
+// lockup tipográfico en la misma tinta, también sin fondo.
+function drawLogoVariant(ctx, variantKey, colorHex, cx, cy, maxW, maxH, align = 'center') {
+  const variant = LOGO_VARIANTS[variantKey] || LOGO_VARIANTS.main;
+
+  if (variant.kind === 'none') return { w: 0, h: 0 };
+
+  if (variant.kind === 'letter') {
+    ctx.save();
+    ctx.fillStyle = colorHex;
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${Math.round(maxH)}px 'Ancizar Serif', Georgia, serif`;
+    ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+    ctx.fillText(variant.letter, cx, cy);
+    ctx.restore();
+    return { w: maxH, h: maxH };
+  }
+
+  if (variant.kind === 'circular') {
+    const size = Math.min(maxW, maxH);
+    let x = cx;
+    if (align === 'left') x = cx + size / 2;
+    if (align === 'right') x = cx - size / 2;
+    drawCircularBikeIsotype(ctx, colorHex, x, cy, size);
+    return { w: size, h: size };
+  }
+
+  const img = imageCache.get(variant.file);
+  if (img) {
+    const tinted = getTintedImage(variant.file, img, colorHex);
+    return drawImageContain(ctx, tinted, cx, cy, maxW, maxH, align);
+  }
+
   ctx.save();
   ctx.fillStyle = colorHex;
   ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.round(maxH * 0.8)}px 'Ancizar Serif', Georgia, serif`;
-  let textAlign = 'center';
-  if (align === 'left') textAlign = 'left';
-  if (align === 'right') textAlign = 'right';
-  ctx.textAlign = textAlign;
+  ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
   ctx.fillText('Bictoria', cx, cy);
   ctx.restore();
   return { w: 0, h: 0 };
 }
 
-function drawStickerBadge(ctx, badgeDef, cx, cy, maxSize, rotationDeg) {
+function drawStickerBadge(ctx, badgeDef, cx, cy, maxSize, rotationDeg, withBackdrop) {
   const img = getBadgeImage(badgeDef);
   if (!img) return;
   const iw = img.naturalWidth || img.width;
@@ -344,9 +445,9 @@ function drawStickerBadge(ctx, badgeDef, cx, cy, maxSize, rotationDeg) {
   ctx.shadowBlur = maxSize * 0.06;
   ctx.shadowOffsetY = maxSize * 0.02;
 
-  if (badgeDef.mono) {
-    // Monochrome stamps are pure ink with transparent cut-outs: back them
-    // with a cream "paper" shape so they read as stickers on any surface.
+  if (withBackdrop) {
+    // Respaldo tipo sticker/parche troquelado en Marfil Base, con margen
+    // interno proporcional alrededor de la silueta del badge.
     const padW = w * 1.14;
     const padH = h * 1.14;
     ctx.fillStyle = COLORS.marfil;
@@ -355,7 +456,8 @@ function drawStickerBadge(ctx, badgeDef, cx, cy, maxSize, rotationDeg) {
     ctx.shadowColor = 'transparent';
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
   } else {
-    // Full-color badges already include their own backing/shadow art.
+    // Sin fondo: solo el arte del badge, con sombra sutil directa para que
+    // se perciba sobre la foto, pero sin ningún contenedor detrás.
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
   }
   ctx.restore();
@@ -363,7 +465,7 @@ function drawStickerBadge(ctx, badgeDef, cx, cy, maxSize, rotationDeg) {
 }
 
 /* ---------------------------------------------------------
-   Interactive badge instances (add / drag / select / remove)
+   Interactive badge instances (add / drag / rotate / scale / remove)
    --------------------------------------------------------- */
 
 function badgeRenderSize(W, H, scalePercent) {
@@ -384,8 +486,23 @@ function getBadgeGeometry(inst, W, H) {
   const xs = corners.map((c) => c.x);
   const ys = corners.map((c) => c.y);
   const box = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+
+  const ref = Math.min(W, H) / 1080;
   const btnR = Math.max(10, Math.min(W, H) * 0.018);
-  return { size, half, rad, box, deleteBtn: { x: box.maxX, y: box.minY, r: btnR } };
+  const rotLineLen = 28 * ref;
+  const rotHandleR = Math.max(7, 8 * ref);
+  const scaleHandleSize = Math.max(12, 16 * ref);
+  const boxCenterX = (box.minX + box.maxX) / 2;
+
+  return {
+    size, half, rad, box,
+    deleteBtn: { x: box.maxX, y: box.minY, r: btnR },
+    rotateHandle: {
+      x: boxCenterX, y: box.minY - rotLineLen, r: rotHandleR,
+      lineX1: boxCenterX, lineY1: box.minY, lineX2: boxCenterX, lineY2: box.minY - rotLineLen,
+    },
+    scaleHandle: { x: box.maxX, y: box.maxY, size: scaleHandleSize },
+  };
 }
 
 function isPointInBadge(inst, W, H, px, py) {
@@ -405,9 +522,24 @@ function isPointInDeleteBtn(inst, W, H, px, py) {
   return dx * dx + dy * dy <= tapR * tapR;
 }
 
-function drawSelectionOverlay(ctx, inst, W, H) {
-  const { box, deleteBtn } = getBadgeGeometry(inst, W, H);
+function isPointInRotateHandle(inst, W, H, px, py) {
+  const { rotateHandle } = getBadgeGeometry(inst, W, H);
+  const dx = px - rotateHandle.x;
+  const dy = py - rotateHandle.y;
+  const tapR = rotateHandle.r * 1.7;
+  return dx * dx + dy * dy <= tapR * tapR;
+}
 
+function isPointInScaleHandle(inst, W, H, px, py) {
+  const { scaleHandle } = getBadgeGeometry(inst, W, H);
+  const tap = scaleHandle.size * 0.95;
+  return Math.abs(px - scaleHandle.x) <= tap && Math.abs(py - scaleHandle.y) <= tap;
+}
+
+function drawSelectionOverlay(ctx, inst, W, H) {
+  const { box, deleteBtn, rotateHandle, scaleHandle } = getBadgeGeometry(inst, W, H);
+
+  // Borde guía punteado
   ctx.save();
   ctx.setLineDash([Math.max(4, W * 0.004), Math.max(4, W * 0.004)]);
   ctx.strokeStyle = 'rgba(50,22,3,0.55)';
@@ -415,6 +547,33 @@ function drawSelectionOverlay(ctx, inst, W, H) {
   ctx.strokeRect(box.minX, box.minY, box.maxX - box.minX, box.maxY - box.minY);
   ctx.restore();
 
+  // Manejador de rotación: línea + círculo
+  ctx.save();
+  ctx.strokeStyle = 'rgba(50,22,3,0.65)';
+  ctx.lineWidth = Math.max(1.5, W * 0.0015);
+  ctx.beginPath();
+  ctx.moveTo(rotateHandle.lineX1, rotateHandle.lineY1);
+  ctx.lineTo(rotateHandle.lineX2, rotateHandle.lineY2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(rotateHandle.x, rotateHandle.y, rotateHandle.r, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.marfil;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, rotateHandle.r * 0.22);
+  ctx.strokeStyle = 'rgba(50,22,3,0.8)';
+  ctx.stroke();
+  ctx.restore();
+
+  // Manejador de escala: cuadrado en esquina inferior derecha
+  ctx.save();
+  ctx.fillStyle = COLORS.marfil;
+  ctx.fillRect(scaleHandle.x - scaleHandle.size / 2, scaleHandle.y - scaleHandle.size / 2, scaleHandle.size, scaleHandle.size);
+  ctx.lineWidth = Math.max(1, scaleHandle.size * 0.14);
+  ctx.strokeStyle = 'rgba(50,22,3,0.8)';
+  ctx.strokeRect(scaleHandle.x - scaleHandle.size / 2, scaleHandle.y - scaleHandle.size / 2, scaleHandle.size, scaleHandle.size);
+  ctx.restore();
+
+  // Botón ✕ de borrado
   ctx.save();
   ctx.beginPath();
   ctx.arc(deleteBtn.x, deleteBtn.y, deleteBtn.r, 0, Math.PI * 2);
@@ -441,7 +600,7 @@ function drawAllBadges(ctx, W, H) {
   state.badges.forEach((inst) => {
     const def = BADGES.find((b) => b.id === inst.defId);
     if (!def) return;
-    drawStickerBadge(ctx, def, inst.x, inst.y, badgeRenderSize(W, H, inst.scale), inst.rotation);
+    drawStickerBadge(ctx, def, inst.x, inst.y, badgeRenderSize(W, H, inst.scale), inst.rotation, inst.backdrop);
   });
 
   if (state.selectedBadgeUid != null) {
@@ -452,8 +611,12 @@ function drawAllBadges(ctx, W, H) {
 
 function addBadgeInstance(defId) {
   const fmt = FORMATS[state.format];
+  const def = BADGES.find((b) => b.id === defId);
   const uid = nextBadgeUid();
-  state.badges.push({ uid, defId, x: fmt.w / 2, y: fmt.h / 2, scale: 100, rotation: 0 });
+  state.badges.push({
+    uid, defId, x: fmt.w / 2, y: fmt.h / 2, scale: 100, rotation: 0,
+    backdrop: def ? !!def.mono : false,
+  });
   state.selectedBadgeUid = uid;
   syncBadgeInspector();
   scheduleRedraw();
@@ -479,75 +642,140 @@ function clampBadgesToCanvas() {
    --------------------------------------------------------- */
 
 function renderTemplateA(ctx, W, H) {
-  const photoH = H * 0.82;
-  const barH = H - photoH;
-  const barY = photoH;
-
-  drawPhotoCover(
-    ctx, state.photo.img,
-    0, 0, W, photoH,
-    state.photo.zoom, state.photo.offsetX, state.photo.offsetY
-  );
-
-  // Bottom bar — three fixed blocks, no rounded corners.
-  const leftW = W * 0.45;
-  const centerW = W * 0.30;
-  const rightW = W - leftW - centerW;
+  // Escala tipográfica proporcional, referida al ancho del lienzo.
+  const scale = W / 1080;
   const ribbonInk = inkFor(state.ribbonColor);
 
-  // Left block
-  ctx.fillStyle = state.ribbonColor;
-  ctx.fillRect(0, barY, leftW, barH);
-  ctx.fillStyle = ribbonInk;
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  const padL = W * 0.025;
-  ctx.font = `500 ${Math.round(barH * 0.24)}px 'DM Mono', monospace`;
-  ctx.fillText(state.texts.title.toUpperCase(), padL, barY + barH * 0.48);
-  ctx.font = `400 ${Math.round(barH * 0.15)}px 'DM Mono', monospace`;
-  ctx.fillStyle = translucentInk(ribbonInk, 0.75);
-  ctx.fillText(state.texts.subtitle.toUpperCase(), padL, barY + barH * 0.74);
+  // ---- Fotografía de fondo completa: cubre el 100% del lienzo ----
+  drawPhotoCover(ctx, state.photo.img, 0, 0, W, H, state.photo.zoom, state.photo.offsetX, state.photo.offsetY);
 
-  // Center block
+  // ---- Nivel 1 · Banda de Producto, Precio y Envíos ----
+  const y1 = H * 0.823;
+  const h1 = H * 0.0625;
+  const colSplit1 = W * 0.34;
+  const colSplit2 = W * 0.683;
+
+  // Columna izquierda — nombre + subtítulo.
+  // Los tamaños/márgenes "* scale" están calibrados sobre la referencia
+  // 1080×1920; en formatos de banda más baja (h1 menor) se reducen en
+  // conjunto (k) para que nombre + subtítulo sigan cabiendo sin solaparse.
   ctx.fillStyle = state.ribbonColor;
-  ctx.fillRect(leftW, barY, centerW, barH);
+  ctx.fillRect(0, y1, colSplit1, h1);
   ctx.fillStyle = ribbonInk;
-  ctx.fillRect(leftW, barY, Math.max(2, W * 0.0019), barH);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const marginL = 31 * scale;
+  const topInset0 = 16 * scale;
+  const bottomInset0 = 14 * scale;
+  let nameFont = 58 * scale;
+  let subFont = 29 * scale;
+  const requiredH1 = topInset0 + nameFont * 0.85 + subFont + bottomInset0;
+  const k1 = Math.min(1, (h1 * 0.92) / requiredH1);
+  nameFont *= k1;
+  subFont *= k1;
+  const topInset = topInset0 * k1;
+  const bottomInset = bottomInset0 * k1;
+
+  const nameMaxWidth = colSplit1 - marginL * 2;
+  ctx.font = `700 ${Math.round(nameFont)}px 'Ancizar Serif', Georgia, serif`;
+  while (ctx.measureText(state.texts.title.toUpperCase()).width > nameMaxWidth && nameFont > 10) {
+    nameFont -= 1;
+    ctx.font = `700 ${Math.round(nameFont)}px 'Ancizar Serif', Georgia, serif`;
+  }
+  ctx.fillText(state.texts.title.toUpperCase(), marginL, y1 + topInset + nameFont * 0.78);
+
+  ctx.font = `400 ${Math.round(subFont)}px 'DM Mono', monospace`;
+  ctx.fillStyle = translucentInk(ribbonInk, 0.75);
+  ctx.fillText(state.texts.subtitle.toUpperCase(), marginL, y1 + h1 - bottomInset);
+
+  // Línea divisoria vertical, fija en Café Espresso
+  const dividerW = Math.max(1, 2 * scale);
+  ctx.fillStyle = COLORS.espresso;
+  ctx.fillRect(colSplit1 - dividerW / 2, y1 + 6 * scale, dividerW, (h1 - 8 * scale) - 6 * scale);
+
+  // Columna central — precio
+  ctx.fillStyle = state.ribbonColor;
+  ctx.fillRect(colSplit1, y1, colSplit2 - colSplit1, h1);
+  ctx.fillStyle = ribbonInk;
   ctx.textAlign = 'center';
-  const priceMaxWidth = centerW - W * 0.03;
-  let priceFont = barH * 0.26;
+  ctx.textBaseline = 'middle';
+  let priceFont = Math.min(50 * scale, h1 * 0.62);
+  const priceMaxWidth = (colSplit2 - colSplit1) - 24 * scale;
   ctx.font = `500 ${Math.round(priceFont)}px 'DM Mono', monospace`;
   while (ctx.measureText(state.texts.price).width > priceMaxWidth && priceFont > 10) {
     priceFont -= 1;
     ctx.font = `500 ${Math.round(priceFont)}px 'DM Mono', monospace`;
   }
-  ctx.fillText(state.texts.price, leftW + centerW / 2, barY + barH * 0.58);
+  ctx.fillText(state.texts.price, (colSplit1 + colSplit2) / 2, y1 + h1 / 2);
 
-  // Right block — fijo en Café Cuero / Marfil.
+  // Columna derecha — envíos, hasta 3 líneas centradas (tamaño con el mismo
+  // criterio de reducción proporcional k2 para que las 3 líneas siempre quepan).
   ctx.fillStyle = COLORS.cuero;
-  ctx.fillRect(leftW + centerW, barY, rightW, barH);
+  ctx.fillRect(colSplit2, y1, W - colSplit2, h1);
   ctx.fillStyle = COLORS.marfil;
   ctx.textAlign = 'left';
-  ctx.font = `400 ${Math.round(barH * 0.14)}px 'DM Mono', monospace`;
-  const rightPad = W * 0.02;
-  const rightLines = wrapText(ctx, state.texts.secondary, rightW - rightPad * 2);
-  const lineH = barH * 0.19;
-  const startY = barY + barH / 2 - ((rightLines.length - 1) * lineH) / 2 + barH * 0.05;
-  rightLines.slice(0, 4).forEach((ln, i) => {
-    ctx.fillText(ln, leftW + centerW + rightPad, startY + i * lineH);
+  ctx.textBaseline = 'middle';
+  const rightFont0 = 26 * scale;
+  const k2 = Math.min(1, (h1 * 0.9) / (rightFont0 * 3.8));
+  const rightFont = rightFont0 * k2;
+  ctx.font = `400 ${Math.round(rightFont)}px 'DM Mono', monospace`;
+  const rightMargin = 28 * scale;
+  const rightLines = wrapText(ctx, state.texts.secondary, (W - colSplit2) - rightMargin * 2);
+  const rightLineH = rightFont * 1.3;
+  const rightStartY = y1 + h1 / 2 - ((rightLines.length - 1) * rightLineH) / 2;
+  rightLines.slice(0, 3).forEach((ln, i) => {
+    ctx.fillText(ln, colSplit2 + rightMargin, rightStartY + i * rightLineH);
   });
 
-  // Tab — top-left, anchored at the photo's corner. Decoración fija (no es un badge interactivo).
-  const tabSize = Math.min(W * 0.1, photoH * 0.22);
-  const tabMargin = W * 0.018;
-  drawStickerBadge(
-    ctx,
-    { mono: true, id: 'tab' },
-    tabMargin + tabSize * 0.5,
-    tabMargin + tabSize * 0.5,
-    tabSize,
-    0
-  );
+  // ---- Nivel 2 · Cinta Web Naranja ----
+  const y2 = y1 + h1;
+  const h2 = H * 0.0585;
+  ctx.fillStyle = COLORS.naranja;
+  ctx.fillRect(0, y2, W, h2);
+  ctx.fillStyle = COLORS.marfil;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const webFont = Math.min(48 * scale, h2 * 0.72);
+  ctx.font = `500 ${Math.round(webFont)}px 'DM Mono', monospace`;
+  ctx.fillText(state.texts.web, 44 * scale, y2 + h2 / 2);
+
+  // ---- Nivel 3 · Remate de fotografía y pie de autor ----
+  const footerAreaY = y2 + h2;
+  const footerAreaH = H - footerAreaY;
+  const footerFont = Math.min(23 * scale, (footerAreaH * 0.85) / 2.5);
+  const footerLineH = footerFont * 1.3;
+  const footerCenterY = footerAreaY + footerAreaH / 2;
+  ctx.save();
+  ctx.fillStyle = COLORS.marfil;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `italic 400 ${Math.round(footerFont)}px 'DM Mono', monospace`;
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 6 * scale;
+  ctx.fillText('Slow-Handcrafted', W / 2, footerCenterY - footerLineH / 2);
+  ctx.fillText('Leather Pieces', W / 2, footerCenterY + footerLineH / 2);
+  ctx.restore();
+
+  // ---- Pestaña superior derecha (logo/ícono) ----
+  const tabW = 0.108 * W;
+  const tabH = 0.095 * H;
+  const tabMarginR = 0.0585 * W;
+  const tabX = W - tabMarginR - tabW;
+  const tabRadius = 58 * scale;
+  const tabBg = state.logoColor;
+  const tabInk = inkFor(tabBg);
+
+  ctx.save();
+  roundRectBottomOnly(ctx, tabX, 0, tabW, tabH, tabRadius);
+  ctx.fillStyle = tabBg;
+  ctx.fill();
+  ctx.clip();
+  const bikeImg = imageCache.get('icon-bici-line.svg');
+  if (bikeImg) {
+    const tinted = getTintedImage('icon-bici-line.svg', bikeImg, tabInk);
+    drawImageContain(ctx, tinted, tabX + tabW / 2, tabH / 2, tabW * 0.66, tabH * 0.4);
+  }
+  ctx.restore();
 }
 
 function renderTemplateB(ctx, W, H) {
@@ -558,7 +786,7 @@ function renderTemplateB(ctx, W, H) {
   ctx.fillRect(0, 0, W, H);
 
   const logoW = W * 0.34;
-  drawLogo(ctx, state.logoColor, W / 2, H * 0.1, logoW, H * 0.08);
+  drawLogoVariant(ctx, state.logoVariant, state.logoColor, W / 2, H * 0.1, logoW, H * 0.08);
 
   ctx.fillStyle = ink;
   ctx.textAlign = 'center';
@@ -624,7 +852,7 @@ function renderTemplateC(ctx, W, H) {
   const pad = colW * 0.09;
   let cursorY = H * 0.12;
 
-  drawLogo(ctx, state.logoColor, pad, cursorY, colW * 0.6, H * 0.09, 'left');
+  drawLogoVariant(ctx, state.logoVariant, state.logoColor, pad, cursorY, colW * 0.6, H * 0.09, 'left');
   cursorY += H * 0.14;
 
   ctx.fillStyle = ink;
@@ -650,6 +878,54 @@ function renderTemplateC(ctx, W, H) {
 
   // Right — photo column
   drawPhotoCover(ctx, state.photo.img, colW, 0, W - colW, H, state.photo.zoom, state.photo.offsetX, state.photo.offsetY);
+}
+
+function renderTemplateD(ctx, W, H) {
+  const bg = state.bgColorD;
+  const ink = inkFor(bg);
+  const s = Math.min(W, H) / 1080;
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Emblema circular superior
+  const emblemSize = 63 * s;
+  drawCircularBikeIsotype(ctx, ink, W / 2, H * 0.1, emblemSize);
+
+  // Titular central — saltos de línea manuales, interlineado compacto.
+  const lines = state.texts.headlineD.split('\n').filter((l) => l.length > 0);
+  const fontSize = 122 * s;
+  const lineH = fontSize * 0.96;
+  const blockH = lines.length * lineH;
+  const startY = H * 0.46 - blockH / 2 + lineH / 2;
+
+  ctx.save();
+  ctx.fillStyle = ink;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 ${Math.round(fontSize)}px 'Ancizar Serif', Georgia, serif`;
+  lines.forEach((ln, i) => ctx.fillText(ln, W / 2, startY + i * lineH));
+  ctx.restore();
+
+  // Subtítulo en dos líneas, Marfil Base.
+  ctx.save();
+  ctx.fillStyle = COLORS.marfil;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `400 ${Math.round(W * 0.024)}px 'DM Mono', monospace`;
+  const subLineH = W * 0.032;
+  const subStartY = H * 0.46 + blockH / 2 + subLineH * 1.1;
+  ['Slow-Handcrafted', 'Leather Pieces'].forEach((ln, i) => {
+    ctx.fillText(ln, W / 2, subStartY + i * subLineH);
+  });
+  ctx.restore();
+
+  // Sello vertical clásico inferior (arte real, teñido a la tinta de contraste).
+  const sealImg = imageCache.get('badge-bictr-2005.svg');
+  if (sealImg) {
+    const tinted = getTintedImage('badge-bictr-2005.svg', sealImg, ink);
+    drawImageContain(ctx, tinted, W / 2, H * 0.88, W * 0.16, H * 0.16);
+  }
 }
 
 /* ---------------------------------------------------------
@@ -683,7 +959,8 @@ function redraw() {
 
   if (state.template === 'A') renderTemplateA(ctx, fmt.w, fmt.h);
   else if (state.template === 'B') renderTemplateB(ctx, fmt.w, fmt.h);
-  else renderTemplateC(ctx, fmt.w, fmt.h);
+  else if (state.template === 'C') renderTemplateC(ctx, fmt.w, fmt.h);
+  else renderTemplateD(ctx, fmt.w, fmt.h);
 
   drawAllBadges(ctx, fmt.w, fmt.h);
 }
@@ -699,10 +976,10 @@ function scheduleRedraw() {
 }
 
 /* ---------------------------------------------------------
-   Canvas pointer interaction (drag / select / remove badges)
+   Canvas pointer interaction (drag / rotate / scale / select / remove)
    --------------------------------------------------------- */
 
-let dragState = null; // { uid, dx, dy }
+let dragState = null; // { type: 'move'|'rotate'|'scale', uid, ... }
 
 function canvasPointFromEvent(evt) {
   const rect = canvas.getBoundingClientRect();
@@ -729,9 +1006,22 @@ function buildCanvasInteraction() {
 
     if (state.selectedBadgeUid != null) {
       const selected = state.badges.find((b) => b.uid === state.selectedBadgeUid);
-      if (selected && isPointInDeleteBtn(selected, fmt.w, fmt.h, p.x, p.y)) {
-        removeBadge(selected.uid);
-        return;
+      if (selected) {
+        if (isPointInDeleteBtn(selected, fmt.w, fmt.h, p.x, p.y)) {
+          removeBadge(selected.uid);
+          return;
+        }
+        if (isPointInRotateHandle(selected, fmt.w, fmt.h, p.x, p.y)) {
+          dragState = { type: 'rotate', uid: selected.uid };
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+        if (isPointInScaleHandle(selected, fmt.w, fmt.h, p.x, p.y)) {
+          const dist0 = Math.max(1, Math.hypot(p.x - selected.x, p.y - selected.y));
+          dragState = { type: 'scale', uid: selected.uid, startDist: dist0, startScale: selected.scale };
+          canvas.style.cursor = 'nwse-resize';
+          return;
+        }
       }
     }
 
@@ -739,7 +1029,7 @@ function buildCanvasInteraction() {
     if (hit) {
       state.selectedBadgeUid = hit.uid;
       syncBadgeInspector();
-      dragState = { uid: hit.uid, dx: p.x - hit.x, dy: p.y - hit.y };
+      dragState = { type: 'move', uid: hit.uid, dx: p.x - hit.x, dy: p.y - hit.y };
       canvas.style.cursor = 'grabbing';
       scheduleRedraw();
       return;
@@ -756,11 +1046,24 @@ function buildCanvasInteraction() {
     if (dragState) {
       const p = canvasPointFromEvent(e);
       const inst = state.badges.find((b) => b.uid === dragState.uid);
-      if (inst) {
+      if (!inst) return;
+
+      if (dragState.type === 'move') {
         inst.x = p.x - dragState.dx;
         inst.y = p.y - dragState.dy;
-        scheduleRedraw();
+      } else if (dragState.type === 'rotate') {
+        const angleRad = Math.atan2(p.y - inst.y, p.x - inst.x) + Math.PI / 2;
+        let deg = (angleRad * 180) / Math.PI;
+        deg = Math.max(-45, Math.min(45, deg));
+        inst.rotation = Math.round(deg);
+        syncBadgeInspector();
+      } else if (dragState.type === 'scale') {
+        const dist = Math.hypot(p.x - inst.x, p.y - inst.y);
+        const ratio = dist / dragState.startDist;
+        inst.scale = Math.round(Math.max(50, Math.min(200, dragState.startScale * ratio)));
+        syncBadgeInspector();
       }
+      scheduleRedraw();
       return;
     }
     // Hover feedback only when the pointer is over the canvas.
@@ -825,7 +1128,11 @@ function applyTemplateLabels() {
   document.getElementById('template-hint').textContent = TEMPLATE_HINTS[state.template];
   document.getElementById('field-show-photo-b').classList.toggle('is-hidden', state.template !== 'B');
   document.getElementById('field-ribbon-color').classList.toggle('is-hidden', state.template !== 'A');
-  document.getElementById('field-logo-color').classList.toggle('is-hidden', state.template === 'A');
+  document.getElementById('field-web').classList.toggle('is-hidden', state.template !== 'A');
+  document.getElementById('field-bg-color-d').classList.toggle('is-hidden', state.template !== 'D');
+  document.getElementById('field-headline-d').classList.toggle('is-hidden', state.template !== 'D');
+  document.getElementById('field-logo-variant').classList.toggle('is-hidden', !(state.template === 'B' || state.template === 'C'));
+  document.getElementById('field-logo-color').classList.toggle('is-hidden', state.template === 'D');
 }
 
 function buildTemplateSelector() {
@@ -907,16 +1214,22 @@ function buildTextControls() {
   const subtitle = document.getElementById('ctl-subtitle');
   const price = document.getElementById('ctl-price');
   const secondary = document.getElementById('ctl-secondary');
+  const web = document.getElementById('ctl-web');
+  const headlineD = document.getElementById('ctl-headline-d');
 
   title.value = state.texts.title;
   subtitle.value = state.texts.subtitle;
   price.value = state.texts.price;
   secondary.value = state.texts.secondary;
+  web.value = state.texts.web;
+  headlineD.value = state.texts.headlineD;
 
   title.addEventListener('input', () => { state.texts.title = title.value; scheduleRedraw(); });
   subtitle.addEventListener('input', () => { state.texts.subtitle = subtitle.value; scheduleRedraw(); });
   price.addEventListener('input', () => { state.texts.price = price.value; scheduleRedraw(); });
   secondary.addEventListener('input', () => { state.texts.secondary = secondary.value; scheduleRedraw(); });
+  web.addEventListener('input', () => { state.texts.web = web.value; scheduleRedraw(); });
+  headlineD.addEventListener('input', () => { state.texts.headlineD = headlineD.value; scheduleRedraw(); });
 
   const phraseWrap = document.getElementById('ctl-phrases');
   PHRASES.forEach((phrase) => {
@@ -940,6 +1253,7 @@ function buildSwatchPicker(containerId, getValue, setValue, onChange) {
     btn.className = 'swatch';
     btn.style.background = sw.hex;
     btn.title = sw.label;
+    btn.dataset.hex = sw.hex;
     btn.setAttribute('aria-label', sw.label);
     if (sw.hex === getValue()) btn.classList.add('active');
     btn.addEventListener('click', () => {
@@ -953,14 +1267,20 @@ function buildSwatchPicker(containerId, getValue, setValue, onChange) {
   });
 }
 
+function syncSwatchActive(containerId, hexValue) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  wrap.querySelectorAll('.swatch').forEach((b) => b.classList.toggle('active', b.dataset.hex === hexValue));
+}
+
 function buildColorControls() {
   buildSwatchPicker(
     'ctl-colors',
     () => state.themeColor,
     (hex) => { state.themeColor = hex; },
     () => {
-      state.logoColor = inkFor(state.themeColor) === COLORS.espresso ? 'dark' : 'cream';
-      syncLogoColorButtons();
+      state.logoColor = inkFor(state.themeColor);
+      syncSwatchActive('ctl-logo-colors', state.logoColor);
     }
   );
   buildSwatchPicker(
@@ -968,23 +1288,32 @@ function buildColorControls() {
     () => state.ribbonColor,
     (hex) => { state.ribbonColor = hex; }
   );
+  buildSwatchPicker(
+    'ctl-logo-colors',
+    () => state.logoColor,
+    (hex) => { state.logoColor = hex; }
+  );
+  buildSwatchPicker(
+    'ctl-bg-color-d',
+    () => state.bgColorD,
+    (hex) => { state.bgColorD = hex; }
+  );
 }
 
-function buildLogoColorControl() {
-  const wrap = document.getElementById('ctl-logo-color');
-  wrap.querySelectorAll('button').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.logoColor = btn.dataset.logoColor;
-      syncLogoColorButtons();
-      scheduleRedraw();
-    });
+function buildLogoVariantControl() {
+  const sel = document.getElementById('ctl-logo-variant');
+  sel.innerHTML = '';
+  Object.entries(LOGO_VARIANTS).forEach(([key, v]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = v.label;
+    sel.appendChild(opt);
   });
-  syncLogoColorButtons();
-}
-
-function syncLogoColorButtons() {
-  const wrap = document.getElementById('ctl-logo-color');
-  wrap.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.logoColor === state.logoColor));
+  sel.value = state.logoVariant;
+  sel.addEventListener('change', () => {
+    state.logoVariant = sel.value;
+    scheduleRedraw();
+  });
 }
 
 function buildBadgeGrid() {
@@ -999,11 +1328,22 @@ function buildBadgeGrid() {
     wrap.appendChild(item);
   });
 
+  const backdropWrap = document.getElementById('ctl-badge-backdrop');
   const scaleInput = document.getElementById('ctl-badge-scale');
   const rotInput = document.getElementById('ctl-badge-rotation');
   const outScale = document.getElementById('out-badge-scale');
   const outRot = document.getElementById('out-badge-rotation');
   const removeBtn = document.getElementById('ctl-badge-remove');
+
+  backdropWrap.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const inst = state.badges.find((bd) => bd.uid === state.selectedBadgeUid);
+      if (!inst) return;
+      inst.backdrop = btn.dataset.backdrop === 'yes';
+      syncBadgeInspector();
+      scheduleRedraw();
+    });
+  });
 
   scaleInput.addEventListener('input', () => {
     const inst = state.badges.find((bd) => bd.uid === state.selectedBadgeUid);
@@ -1035,6 +1375,7 @@ function syncBadgeInspector() {
   const rotInput = document.getElementById('ctl-badge-rotation');
   const outScale = document.getElementById('out-badge-scale');
   const outRot = document.getElementById('out-badge-rotation');
+  const backdropWrap = document.getElementById('ctl-badge-backdrop');
 
   if (inst) {
     inspector.classList.remove('is-hidden');
@@ -1042,6 +1383,9 @@ function syncBadgeInspector() {
     rotInput.value = inst.rotation;
     outScale.textContent = `${inst.scale}%`;
     outRot.textContent = `${inst.rotation}°`;
+    backdropWrap.querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('active', (b.dataset.backdrop === 'yes') === !!inst.backdrop);
+    });
   } else {
     inspector.classList.add('is-hidden');
   }
@@ -1054,8 +1398,8 @@ function buildExport() {
     if (!assetsReady) return;
     const fmt = FORMATS[state.format];
 
-    // Ocultar temporalmente la selección para que el borde guía y el botón ✕
-    // nunca aparezcan en el PNG exportado.
+    // Ocultar temporalmente la selección para que el borde guía, los
+    // manejadores y el botón ✕ nunca aparezcan en el PNG exportado.
     const hadSelection = state.selectedBadgeUid;
     state.selectedBadgeUid = null;
     redraw();
@@ -1086,7 +1430,7 @@ async function boot() {
   buildPhotoControls();
   buildTextControls();
   buildColorControls();
-  buildLogoColorControl();
+  buildLogoVariantControl();
   buildBadgeGrid();
   buildCanvasInteraction();
   buildExport();
