@@ -662,16 +662,23 @@ function clampBadgesToCanvas() {
    --------------------------------------------------------- */
 
 function renderTemplateA(ctx, W, H) {
-  // Escala tipográfica proporcional, referida al ancho del lienzo.
-  const scale = W / 1080;
+  // Escala UNIFORME (no W/1080): evita que el ancho extra del banner
+  // (1920×800) infle tipografía y aplaste las bandas/la pestaña. Vale 1.0 en
+  // 1080×1080, 1080×1350 y 1080×1920 (idéntico a antes), y 0.741 en 1920×800.
+  const uScale = Math.min(W, H) / 1080;
   const ribbonInk = inkFor(state.ribbonColor);
+  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
 
   // ---- Fotografía de fondo completa: cubre el 100% del lienzo ----
   drawPhotoCover(ctx, state.photo.img, 0, 0, W, H, state.photo.zoom, state.photo.offsetX, state.photo.offsetY);
 
-  // ---- Nivel 1 · Banda de Producto, Precio y Envíos ----
-  const y1 = H * 0.823;
-  const h1 = H * 0.0625;
+  // ---- Bandas inferiores: alturas y posición en px reales vía uScale, no
+  // porcentaje de H — así siempre tienen altura suficiente para su tipografía.
+  const h1 = 120 * uScale;
+  const h2 = 113 * uScale;
+  const bottomMargin = (W > H ? 52 : 107) * uScale;
+  const y2 = H - bottomMargin - h2;
+  const y1 = y2 - h1;
   const colSplit1 = W * 0.34;
   const colSplit2 = W * 0.683;
 
@@ -686,19 +693,18 @@ function renderTemplateA(ctx, W, H) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
-  const marginL = 31 * scale;
-  const dividerMargin = 22 * scale;
+  const marginL = 31 * uScale;
+  const dividerMargin = 22 * uScale;
   const maxNameWidth = colSplit1 - marginL - dividerMargin;
-  const subFont = 29 * scale;
-  const blockGap = 6 * scale;
+  const subFont = 29 * uScale;
+  const blockGap = 6 * uScale;
 
-  const desiredTitlePx = state.titleFontSizePt * 1.933 * scale;
+  const desiredTitlePx = state.titleFontSizePt * 1.933 * uScale;
   const availableBlockH = h1 * 0.92;
   const maxTitleFontByHeight = Math.max(10, (availableBlockH - subFont - blockGap) / 0.85);
   const desiredTitlePxClamped = Math.min(desiredTitlePx, maxTitleFontByHeight);
 
   const nameText = state.texts.title.toUpperCase();
-  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
   const nameFont = getFittedFontSize(ctx, nameText, maxNameWidth, desiredTitlePxClamped, 700, fontFamilySerif);
 
   const titleLineH = nameFont * 0.85;
@@ -713,9 +719,9 @@ function renderTemplateA(ctx, W, H) {
   ctx.fillText(state.texts.subtitle.toUpperCase(), marginL, blockTop + titleLineH + blockGap + subFont * 0.78);
 
   // Línea divisoria vertical, fija en Café Espresso
-  const dividerW = Math.max(1, 2 * scale);
+  const dividerW = Math.max(1, 2 * uScale);
   ctx.fillStyle = COLORS.espresso;
-  ctx.fillRect(colSplit1 - dividerW / 2, y1 + 6 * scale, dividerW, (h1 - 8 * scale) - 6 * scale);
+  ctx.fillRect(colSplit1 - dividerW / 2, y1 + 6 * uScale, dividerW, h1 - 14 * uScale);
 
   // Columna central — precio
   ctx.fillStyle = state.ribbonColor;
@@ -723,27 +729,21 @@ function renderTemplateA(ctx, W, H) {
   ctx.fillStyle = ribbonInk;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  let priceFont = Math.min(50 * scale, h1 * 0.62);
-  const priceMaxWidth = (colSplit2 - colSplit1) - 24 * scale;
+  const priceMaxWidth = (colSplit2 - colSplit1) - 24 * uScale;
+  const priceFont = getFittedFontSize(ctx, state.texts.price, priceMaxWidth, 50 * uScale, 500, "'DM Mono', monospace");
   ctx.font = `500 ${Math.round(priceFont)}px 'DM Mono', monospace`;
-  while (ctx.measureText(state.texts.price).width > priceMaxWidth && priceFont > 10) {
-    priceFont -= 1;
-    ctx.font = `500 ${Math.round(priceFont)}px 'DM Mono', monospace`;
-  }
   ctx.fillText(state.texts.price, (colSplit1 + colSplit2) / 2, y1 + h1 / 2);
 
-  // Columna derecha — envíos, hasta 3 líneas centradas (tamaño con el mismo
-  // criterio de reducción proporcional k2 para que las 3 líneas siempre quepan).
+  // Columna derecha — envíos, hasta 3 líneas centradas. Con las bandas ya
+  // dimensionadas con uScale, 26*uScale siempre cabe en 3 líneas sin recorte.
   ctx.fillStyle = COLORS.cuero;
   ctx.fillRect(colSplit2, y1, W - colSplit2, h1);
   ctx.fillStyle = COLORS.marfil;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const rightFont0 = 26 * scale;
-  const k2 = Math.min(1, (h1 * 0.9) / (rightFont0 * 3.8));
-  const rightFont = rightFont0 * k2;
+  const rightFont = 26 * uScale;
   ctx.font = `400 ${Math.round(rightFont)}px 'DM Mono', monospace`;
-  const rightMargin = 28 * scale;
+  const rightMargin = 28 * uScale;
   const rightLines = wrapText(ctx, state.texts.secondary, (W - colSplit2) - rightMargin * 2);
   const rightLineH = rightFont * 1.3;
   const rightStartY = y1 + h1 / 2 - ((rightLines.length - 1) * rightLineH) / 2;
@@ -752,21 +752,19 @@ function renderTemplateA(ctx, W, H) {
   });
 
   // ---- Nivel 2 · Cinta Web Naranja ----
-  const y2 = y1 + h1;
-  const h2 = H * 0.0585;
   ctx.fillStyle = COLORS.naranja;
   ctx.fillRect(0, y2, W, h2);
   ctx.fillStyle = COLORS.marfil;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const webFont = Math.min(48 * scale, h2 * 0.72);
+  const webFont = 48 * uScale;
   ctx.font = `500 ${Math.round(webFont)}px 'DM Mono', monospace`;
-  ctx.fillText(state.texts.web, 44 * scale, y2 + h2 / 2);
+  ctx.fillText(state.texts.web, 44 * uScale, y2 + h2 / 2);
 
   // ---- Nivel 3 · Remate de fotografía y pie de autor ----
   const footerAreaY = y2 + h2;
-  const footerAreaH = H - footerAreaY;
-  const footerFont = Math.min(23 * scale, (footerAreaH * 0.85) / 2.5);
+  const footerAreaH = H - footerAreaY; // == bottomMargin
+  const footerFont = Math.min(23 * uScale, (footerAreaH * 0.85) / 2.5);
   const footerLineH = footerFont * 1.3;
   const footerCenterY = footerAreaY + footerAreaH / 2;
   ctx.save();
@@ -775,17 +773,17 @@ function renderTemplateA(ctx, W, H) {
   ctx.textBaseline = 'middle';
   ctx.font = `italic 400 ${Math.round(footerFont)}px 'DM Mono', monospace`;
   ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = 6 * scale;
+  ctx.shadowBlur = 6 * uScale;
   ctx.fillText('Slow-Handcrafted', W / 2, footerCenterY - footerLineH / 2);
   ctx.fillText('Leather Pieces', W / 2, footerCenterY + footerLineH / 2);
   ctx.restore();
 
-  // ---- Pestaña superior derecha (logo/ícono) ----
-  const tabW = 0.108 * W;
-  const tabH = 0.095 * H;
-  const tabMarginR = 0.0585 * W;
+  // ---- Pestaña superior derecha (logo/ícono), proporción fija vía uScale ----
+  const tabW = 117 * uScale;
+  const tabH = 182 * uScale;
+  const tabMarginR = 63 * uScale;
   const tabX = W - tabMarginR - tabW;
-  const tabRadius = 58 * scale;
+  const tabRadius = 58 * uScale;
   const tabBg = state.logoColor;
   const tabInk = inkFor(tabBg);
 
@@ -876,6 +874,7 @@ function renderTemplateC(ctx, W, H) {
   const colW = W * 0.45;
   const bg = state.themeColor;
   const ink = inkFor(bg);
+  const uScale = Math.min(W, H) / 1080;
 
   // Left — typographic column
   ctx.fillStyle = bg;
@@ -908,11 +907,15 @@ function renderTemplateC(ctx, W, H) {
     ctx.fillText(ln, pad, cursorY);
   });
 
-  cursorY += titleLineH * 0.55;
-  ctx.font = `500 ${Math.round(colW * 0.052)}px 'DM Mono', monospace`;
+  // Despeje natural bajo el título (descendentes/interlineado) + el aire
+  // extra pedido, para que nunca se monte sobre el subtítulo.
+  cursorY += titleLineH * 0.55 + 28 * uScale;
+  const subFontC = colW * 0.052;
+  ctx.font = `500 ${Math.round(subFontC)}px 'DM Mono', monospace`;
   ctx.fillText(state.texts.subtitle.toUpperCase(), pad, cursorY);
-  cursorY += colW * 0.08;
-  ctx.font = `500 ${Math.round(colW * 0.058)}px 'DM Mono', monospace`;
+  cursorY += subFontC * 0.9 + 24 * uScale;
+  const priceFontC = 54 * uScale;
+  ctx.font = `500 ${Math.round(priceFontC)}px 'DM Mono', monospace`;
   ctx.fillText(state.texts.price, pad, cursorY);
 
   ctx.font = `400 ${Math.round(colW * 0.04)}px 'DM Mono', monospace`;
@@ -925,35 +928,96 @@ function renderTemplateC(ctx, W, H) {
 function renderTemplateD(ctx, W, H) {
   const bg = state.bgColorD;
   const ink = inkFor(bg);
-  const s = Math.min(W, H) / 1080;
+  const uScale = Math.min(W, H) / 1080;
+  const titleFactor = state.titleFontSizePt / 30;
+  const isWide = W > H;
+  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Emblema circular superior
-  const emblemSize = 63 * s;
-  drawCircularBikeIsotype(ctx, ink, W / 2, H * 0.1, emblemSize);
+  // Titular — en horizontal, reorganiza la frase por defecto en 2 líneas más
+  // panorámicas; si el usuario escribió su propio texto, se respetan sus
+  // saltos de línea manuales siempre.
+  const isDefaultHeadline = state.texts.headlineD === 'La vida\nen Bici\nrueda\nmejor';
+  let lines = state.texts.headlineD.split('\n').filter((l) => l.length > 0);
+  if (isWide && isDefaultHeadline) {
+    lines = ['La vida en Bici', 'rueda mejor'];
+  }
 
-  // Titular central — saltos de línea manuales, interlineado compacto.
-  const lines = state.texts.headlineD.split('\n').filter((l) => l.length > 0);
-  const titleFactor = state.titleFontSizePt / 30;
-  const maxLineWidth = W * 0.88;
-  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
-  let fontSize = 122 * s * titleFactor;
+  // Ancho máximo del titular: más panorámico en horizontal.
+  const maxLineWidth = isWide ? W * 0.72 : W * 0.88;
+  let headlineFont0 = (isWide ? 92 : 120) * uScale * titleFactor;
   lines.forEach((ln) => {
-    const fitted = getFittedFontSize(ctx, ln, maxLineWidth, fontSize, 700, fontFamilySerif);
-    fontSize = Math.min(fontSize, fitted);
+    const fitted = getFittedFontSize(ctx, ln, maxLineWidth, headlineFont0, 700, fontFamilySerif);
+    headlineFont0 = Math.min(headlineFont0, fitted);
   });
-  const lineH = fontSize * 0.96;
-  const blockH = lines.length * lineH;
-  const startY = H * 0.46 - blockH / 2 + lineH / 2;
 
+  // ---- Distribución vertical secuencial sin colisiones ----
+  // Tamaños nominales (antes del posible reajuste de grupo "g").
+  const emblemSize0 = 92 * uScale;
+  const subFont0 = 24 * uScale;
+  const sealSize0 = 150 * uScale;
+  const topMargin0 = 36 * uScale;
+  const bottomMargin0 = 36 * uScale;
+  const gap0 = 32 * uScale;
+  const gapFloor = 22 * uScale;
+
+  const totalHeightFor = (g) => {
+    const headlineLineH = headlineFont0 * g * 0.96;
+    const subLineH = subFont0 * g * 1.3;
+    const gap = Math.max(gapFloor, gap0 * g);
+    return (
+      topMargin0 * g +
+      emblemSize0 * g +
+      gap +
+      lines.length * headlineLineH +
+      gap +
+      2 * subLineH +
+      gap +
+      sealSize0 * g +
+      bottomMargin0 * g
+    );
+  };
+
+  let g = 1;
+  const nominalTotal = totalHeightFor(1);
+  const maxAllowedH = H * 0.88;
+  if (nominalTotal > maxAllowedH) {
+    g = Math.max(0.3, maxAllowedH / nominalTotal);
+  }
+
+  const emblemSize = emblemSize0 * g;
+  const headlineFont = headlineFont0 * g;
+  const headlineLineH = headlineFont * 0.96;
+  const headlineBlockH = lines.length * headlineLineH;
+  const subFont = subFont0 * g;
+  const subLineH = subFont * 1.3;
+  const subtitleBlockH = 2 * subLineH;
+  const sealSize = sealSize0 * g;
+  const gap = Math.max(gapFloor, gap0 * g);
+  const topMargin = topMargin0 * g;
+
+  // Coordenadas Y de arriba hacia abajo: isotipo → titular → subtítulo → sello.
+  let cursorY = topMargin;
+  const emblemCenterY = cursorY + emblemSize / 2;
+  cursorY += emblemSize + gap;
+  const headlineStartY = cursorY + headlineLineH / 2;
+  cursorY += headlineBlockH + gap;
+  const subtitleStartY = cursorY + subLineH / 2;
+  cursorY += subtitleBlockH + gap;
+  const sealCenterY = cursorY + sealSize / 2;
+
+  // Emblema circular superior
+  drawCircularBikeIsotype(ctx, ink, W / 2, emblemCenterY, emblemSize);
+
+  // Titular central
   ctx.save();
   ctx.fillStyle = ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${Math.round(fontSize)}px ${fontFamilySerif}`;
-  lines.forEach((ln, i) => ctx.fillText(ln, W / 2, startY + i * lineH));
+  ctx.font = `700 ${Math.round(headlineFont)}px ${fontFamilySerif}`;
+  lines.forEach((ln, i) => ctx.fillText(ln, W / 2, headlineStartY + i * headlineLineH));
   ctx.restore();
 
   // Subtítulo en dos líneas, Marfil Base.
@@ -961,11 +1025,9 @@ function renderTemplateD(ctx, W, H) {
   ctx.fillStyle = COLORS.marfil;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `400 ${Math.round(W * 0.024)}px 'DM Mono', monospace`;
-  const subLineH = W * 0.032;
-  const subStartY = H * 0.46 + blockH / 2 + subLineH * 1.1;
+  ctx.font = `400 ${Math.round(subFont)}px 'DM Mono', monospace`;
   ['Slow-Handcrafted', 'Leather Pieces'].forEach((ln, i) => {
-    ctx.fillText(ln, W / 2, subStartY + i * subLineH);
+    ctx.fillText(ln, W / 2, subtitleStartY + i * subLineH);
   });
   ctx.restore();
 
@@ -973,7 +1035,7 @@ function renderTemplateD(ctx, W, H) {
   const sealImg = imageCache.get('badge-bictr-2005.svg');
   if (sealImg) {
     const tinted = getTintedImage('badge-bictr-2005.svg', sealImg, ink);
-    drawImageContain(ctx, tinted, W / 2, H * 0.88, W * 0.16, H * 0.16);
+    drawImageContain(ctx, tinted, W / 2, sealCenterY, sealSize, sealSize);
   }
 }
 
@@ -1380,7 +1442,6 @@ function buildLogoVariantControl() {
   sel.value = state.logoVariant;
   sel.addEventListener('change', () => {
     state.logoVariant = sel.value;
-    syncResourceButtons();
     scheduleRedraw();
   });
 }
@@ -1490,96 +1551,160 @@ function buildExport() {
 }
 
 /* ---------------------------------------------------------
-   Centro de Recursos (manual de marca + exportadores de logo)
+   Centro de Recursos — modal de exportación y motor de empaquetado
    --------------------------------------------------------- */
 
-// Exporta la variante de logo seleccionada como PNG a color, en alta
-// resolución (2000px de ancho), teñido exactamente al Color de Logo actual.
-function exportLogoPNG() {
-  const variant = LOGO_VARIANTS[state.logoVariant];
-  if (!variant || variant.kind === 'none') return;
+// Variantes de marca base que se tiñen y empaquetan en el .zip.
+const EXPORT_PACK_FILES = ['logo-bictoria-dark.svg', 'tab-bici.svg', 'badge-bictr-2005.svg'];
 
-  const targetW = 2000;
-  const off = document.createElement('canvas');
-  const octx = off.getContext('2d');
+const exportModalState = {
+  color: COLORS.espresso,
+  format: 'png',
+};
 
-  if (variant.kind === 'asset') {
-    const img = imageCache.get(variant.file);
-    if (!img) return;
+function openExportModal() {
+  document.getElementById('export-modal').classList.remove('is-hidden');
+}
+function closeExportModal() {
+  document.getElementById('export-modal').classList.add('is-hidden');
+}
+
+// Tiñe el SVG fuente al color elegido, cubriendo tanto fills/strokes en línea
+// como el patrón real de nuestros assets (clase CSS .cls-1 { fill:#hex } en
+// un <style> dentro del <defs>). Devuelve el SVG serializado de vuelta.
+function tintSvgSource(svgText, colorHex) {
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+
+  // Caso real de nuestros assets: color definido vía clase CSS en <style>.
+  doc.querySelectorAll('style').forEach((styleEl) => {
+    styleEl.textContent = styleEl.textContent.replace(/fill\s*:\s*#[0-9a-fA-F]{3,8}/gi, `fill: ${colorHex}`);
+  });
+
+  // Caso genérico: elementos con fill/stroke en línea (para cualquier otro
+  // logotipo que no use el patrón de clase CSS).
+  doc.querySelectorAll('path, rect, circle, ellipse, polygon, polyline, line').forEach((el) => {
+    const fill = el.getAttribute('fill');
+    if (fill && fill.toLowerCase() !== 'none') el.setAttribute('fill', colorHex);
+    const stroke = el.getAttribute('stroke');
+    if (stroke && stroke.toLowerCase() !== 'none') el.setAttribute('stroke', colorHex);
+  });
+
+  return new XMLSerializer().serializeToString(doc);
+}
+
+// Rasteriza un SVG ya teñido a un canvas offscreen de alta resolución y
+// devuelve su dataURL PNG.
+async function rasterizeSvgToPNG(svgText, targetW) {
+  const blob = new Blob([svgText], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await loadImageFromURL(url);
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
     const targetH = Math.round(targetW * (ih / iw));
+    const off = document.createElement('canvas');
     off.width = targetW;
     off.height = targetH;
+    const octx = off.getContext('2d');
     octx.imageSmoothingEnabled = true;
     octx.imageSmoothingQuality = 'high';
-    // 1-2. Dibuja el logo a tamaño completo en el canvas temporal offscreen.
     octx.drawImage(img, 0, 0, targetW, targetH);
-    // 3. Tiñe exactamente al Color de Logo elegido, preservando la transparencia.
-    octx.globalCompositeOperation = 'source-in';
-    octx.fillStyle = state.logoColor;
-    octx.fillRect(0, 0, targetW, targetH);
-  } else if (variant.kind === 'circular') {
-    off.width = targetW;
-    off.height = targetW;
-    drawCircularBikeIsotype(octx, state.logoColor, targetW / 2, targetW / 2, targetW * 0.92);
-  } else if (variant.kind === 'letter') {
-    off.width = targetW;
-    off.height = targetW;
-    octx.save();
-    octx.fillStyle = state.logoColor;
-    octx.textAlign = 'center';
-    octx.textBaseline = 'middle';
-    octx.font = `700 ${Math.round(targetW * 0.72)}px 'Ancizar Serif', Georgia, serif`;
-    octx.fillText(variant.letter, targetW / 2, targetW / 2);
-    octx.restore();
-  } else {
-    return;
+    return { dataURL: off.toDataURL('image/png', 1.0), w: targetW, h: targetH };
+  } finally {
+    URL.revokeObjectURL(url);
   }
-
-  // 4. Exporta el canvas temporal y fuerza la descarga con nombre dinámico.
-  const dataURL = off.toDataURL('image/png', 1.0);
-  const a = document.createElement('a');
-  a.href = dataURL;
-  a.download = `Bictoria-Logo-${state.logoColor.replace('#', '')}.png`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 }
 
-// Fuerza la descarga del archivo .svg nativo (sin alterar) de la variante
-// de logo actualmente seleccionada, directamente desde ./assets/.
-function exportLogoSVG() {
-  const variant = LOGO_VARIANTS[state.logoVariant];
-  if (!variant || variant.kind !== 'asset') return;
-  const a = document.createElement('a');
-  a.href = `./assets/${variant.file}`;
-  a.download = variant.file;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
+async function generateLogoPack() {
+  const btn = document.getElementById('export-modal-generate');
+  const originalText = btn.textContent;
+  btn.textContent = 'Procesando... ⏳';
+  btn.disabled = true;
 
-function syncResourceButtons() {
-  const variant = LOGO_VARIANTS[state.logoVariant];
-  const pngBtn = document.getElementById('ctl-export-logo-png');
-  const svgBtn = document.getElementById('ctl-export-logo-svg');
+  try {
+    const zip = new JSZip();
+    const color = exportModalState.color;
+    const format = exportModalState.format;
 
-  const pngDisabled = !variant || variant.kind === 'none';
-  pngBtn.disabled = pngDisabled;
-  pngBtn.title = pngDisabled ? 'Selecciona una variante de logo para exportar.' : '';
+    for (const file of EXPORT_PACK_FILES) {
+      const res = await fetch(`./assets/${file}`);
+      if (!res.ok) continue;
+      const rawSvg = await res.text();
+      const svgText = tintSvgSource(rawSvg, color);
+      const baseName = `Bictoria-${file.replace(/\.svg$/i, '')}`;
 
-  const svgDisabled = !variant || variant.kind !== 'asset';
-  svgBtn.disabled = svgDisabled;
-  svgBtn.title = svgDisabled
-    ? 'Esta variante no tiene un archivo vectorial nativo en ./assets/.'
-    : 'Descarga el SVG original sin alteraciones.';
+      if (format === 'svg') {
+        zip.file(`${baseName}.svg`, svgText);
+      } else {
+        const { dataURL, w, h } = await rasterizeSvgToPNG(svgText, 2500);
+        if (format === 'png') {
+          const base64Data = dataURL.split(',')[1];
+          zip.file(`${baseName}.png`, base64Data, { base64: true });
+        } else if (format === 'pdf') {
+          const { jsPDF } = window.jspdf;
+          const pdfDoc = new jsPDF({
+            orientation: w >= h ? 'landscape' : 'portrait',
+            unit: 'pt',
+            format: [w, h],
+          });
+          pdfDoc.addImage(dataURL, 'PNG', 0, 0, w, h);
+          zip.file(`${baseName}.pdf`, pdfDoc.output('blob'));
+        }
+      }
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(content);
+    a.href = url;
+    a.download = `Bictoria-Logos-${color.replace('#', '')}-${format.toUpperCase()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    closeExportModal();
+  } catch (err) {
+    console.error('Error generando el pack de logotipos:', err);
+    alert('Ocurrió un error generando el pack de logotipos. Intenta de nuevo.');
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
 }
 
 function buildResourceCenter() {
-  document.getElementById('ctl-export-logo-png').addEventListener('click', exportLogoPNG);
-  document.getElementById('ctl-export-logo-svg').addEventListener('click', exportLogoSVG);
-  syncResourceButtons();
+  document.getElementById('ctl-open-export-modal').addEventListener('click', openExportModal);
+  document.getElementById('export-modal-close').addEventListener('click', closeExportModal);
+  document.getElementById('export-modal-overlay').addEventListener('click', closeExportModal);
+
+  const colorsWrap = document.getElementById('export-modal-colors');
+  SWATCHES.forEach((sw) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'swatch';
+    btn.style.background = sw.hex;
+    btn.title = sw.label;
+    btn.dataset.hex = sw.hex;
+    btn.setAttribute('aria-label', sw.label);
+    if (sw.hex === exportModalState.color) btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      exportModalState.color = sw.hex;
+      colorsWrap.querySelectorAll('.swatch').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    colorsWrap.appendChild(btn);
+  });
+
+  const formatsWrap = document.getElementById('export-modal-formats');
+  formatsWrap.querySelectorAll('.vastago-export-pill').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      exportModalState.format = btn.dataset.format;
+      formatsWrap.querySelectorAll('.vastago-export-pill').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  document.getElementById('export-modal-generate').addEventListener('click', generateLogoPack);
 }
 
 /* ---------------------------------------------------------

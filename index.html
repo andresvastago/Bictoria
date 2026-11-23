@@ -12,6 +12,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Ancizar+Serif:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <link rel="stylesheet" href="style.css">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -178,20 +181,19 @@
       <p class="hint">Archivos de marca listos para imprenta, redes o el equipo de diseño del cliente.</p>
       <div class="resource-buttons">
         <a href="./assets/Bictoria%20Brand.pdf" download class="btn-outline">📄 Descargar Manual de Marca</a>
-        <button type="button" class="btn-outline" id="ctl-export-logo-png">🎨 Descargar Logo en PNG (Color actual)</button>
-        <button type="button" class="btn-ghost small" id="ctl-export-logo-svg">Descargar vector original (SVG)</button>
+        <button type="button" class="btn-outline" id="ctl-open-export-modal">📦 Descargar Pack de Logotipos</button>
       </div>
     </section>
 
     <footer class="vastago-footer">
       <div class="vastago-footer-header">
         <img src="./assets/VastagoAsset 15.svg" onerror="this.onerror=null; this.src='./assets/VastagoAsset 15.png';" alt="Vástago Design Studio" class="vastago-logo">
-        <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer" class="vastago-footer-cta">Work With Us</a>
+        <a href="https://estudiovastago.com/work-with-us" target="_blank" rel="noopener noreferrer" class="vastago-footer-cta">Work With Us</a>
       </div>
 
       <div class="vastago-footer-grid">
         <div class="vastago-footer-col">
-          <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer">Work With Us</a>
+          <a href="https://estudiovastago.com/work-with-us" target="_blank" rel="noopener noreferrer">Work With Us</a>
           <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer">Font Catalog</a>
           <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer">Client Work</a>
           <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer">Journal</a>
@@ -218,6 +220,30 @@
     </div>
   </main>
 
+</div>
+
+<div class="vastago-export-modal is-hidden" id="export-modal">
+  <div class="vastago-export-overlay" id="export-modal-overlay"></div>
+  <div class="vastago-export-card">
+    <button type="button" class="vastago-export-close" id="export-modal-close" aria-label="Cerrar">✕</button>
+    <h3 class="vastago-export-title">Exportar Logotipos Bictoria</h3>
+
+    <div class="vastago-export-step">
+      <p class="vastago-export-step-label">Paso 1 — Color</p>
+      <div class="vastago-export-colors" id="export-modal-colors"></div>
+    </div>
+
+    <div class="vastago-export-step">
+      <p class="vastago-export-step-label">Paso 2 — Formato</p>
+      <div class="vastago-export-formats" id="export-modal-formats">
+        <button type="button" class="vastago-export-pill active" data-format="png">PNG <span>Raster alta calidad</span></button>
+        <button type="button" class="vastago-export-pill" data-format="svg">SVG <span>Vector nativo</span></button>
+        <button type="button" class="vastago-export-pill" data-format="pdf">PDF <span>Vector para impresión</span></button>
+      </div>
+    </div>
+
+    <button type="button" class="vastago-export-cta" id="export-modal-generate">Generar y Descargar Pack (.zip)</button>
+  </div>
 </div>
 
 <script src="app.js" defer></script>
