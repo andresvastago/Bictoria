@@ -83,6 +83,15 @@
         <label id="label-title">Título del producto</label>
         <input type="text" id="ctl-title" maxlength="60">
       </div>
+      <div class="field" id="field-title-size">
+        <label>Tamaño del nombre
+          <span class="title-size-value-wrap">
+            <output id="out-title-size">30 pt</output>
+            <button type="button" class="btn-reset" id="ctl-title-size-reset" title="Restablecer a 30 pt">↺</button>
+          </span>
+        </label>
+        <input type="range" id="titleSizeSlider" min="20" max="55" step="1" value="30">
+      </div>
       <div class="field" id="field-subtitle">
         <label id="label-subtitle">Colección / Subtítulo</label>
         <input type="text" id="ctl-subtitle" maxlength="60">
@@ -176,7 +185,7 @@
 
     <footer class="vastago-footer">
       <div class="vastago-footer-header">
-        <img src="./assets/VastagoAsset 14.svg" alt="Vástago Design Studio" class="vastago-footer-logo" onerror="this.onerror=null; this.src='./assets/VastagoAsset 14.png';">
+        <img src="./assets/VastagoAsset 15.svg" onerror="this.onerror=null; this.src='./assets/VastagoAsset 15.png';" alt="Vástago Design Studio" class="vastago-logo">
         <a href="https://www.estudiovastago.com" target="_blank" rel="noopener noreferrer" class="vastago-footer-cta">Work With Us</a>
       </div>
 

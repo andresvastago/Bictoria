@@ -139,6 +139,7 @@ const state = {
   logoVariant: 'main',
   logoColor: COLORS.espresso, // hex — se recalcula al cambiar el tema, pero el usuario puede forzarlo.
   ribbonColor: COLORS.amarilloPalido,
+  titleFontSizePt: 30, // controla el tamaño del nombre/título en todas las plantillas
   badges: [], // { uid, defId, x, y, scale, rotation, backdrop }
   selectedBadgeUid: null,
 };
@@ -337,6 +338,25 @@ function wrapText(ctx, text, maxWidth) {
   }
   if (line) lines.push(line);
   return lines;
+}
+
+// Calcula el cuerpo tipográfico más grande que quepa en maxWidth sin deformar
+// los glifos (nunca usa el 4.º parámetro de fillText, que comprime el ancho).
+// Reduce proporcionalmente primero y luego ajusta en pasos de 1px hasta que
+// mida exacto.
+function getFittedFontSize(ctx, text, maxWidth, desiredPx, fontWeight, fontFamily) {
+  ctx.font = `${fontWeight} ${desiredPx}px ${fontFamily}`;
+  const w = ctx.measureText(text).width;
+  if (w > maxWidth && w > 0) {
+    let size = Math.floor(desiredPx * (maxWidth / w));
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    while (ctx.measureText(text).width > maxWidth && size > 10) {
+      size -= 1;
+      ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    }
+    return size;
+  }
+  return desiredPx;
 }
 
 function drawImageContain(ctx, img, cx, cy, maxW, maxH, align = 'center') {
@@ -656,37 +676,41 @@ function renderTemplateA(ctx, W, H) {
   const colSplit2 = W * 0.683;
 
   // Columna izquierda — nombre + subtítulo.
-  // Los tamaños/márgenes "* scale" están calibrados sobre la referencia
-  // 1080×1920; en formatos de banda más baja (h1 menor) se reducen en
-  // conjunto (k) para que nombre + subtítulo sigan cabiendo sin solaparse.
+  // El tamaño del nombre lo controla el usuario (state.titleFontSizePt);
+  // getFittedFontSize lo recorta sin deformar glifos si no cabe en el ancho
+  // disponible antes de la línea divisoria, y el clamp de altura evita que
+  // el bloque título+subtítulo choque con los bordes de la franja.
   ctx.fillStyle = state.ribbonColor;
   ctx.fillRect(0, y1, colSplit1, h1);
   ctx.fillStyle = ribbonInk;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  const marginL = 31 * scale;
-  const topInset0 = 16 * scale;
-  const bottomInset0 = 14 * scale;
-  let nameFont = 58 * scale;
-  let subFont = 29 * scale;
-  const requiredH1 = topInset0 + nameFont * 0.85 + subFont + bottomInset0;
-  const k1 = Math.min(1, (h1 * 0.92) / requiredH1);
-  nameFont *= k1;
-  subFont *= k1;
-  const topInset = topInset0 * k1;
-  const bottomInset = bottomInset0 * k1;
 
-  const nameMaxWidth = colSplit1 - marginL * 2;
-  ctx.font = `700 ${Math.round(nameFont)}px 'Ancizar Serif', Georgia, serif`;
-  while (ctx.measureText(state.texts.title.toUpperCase()).width > nameMaxWidth && nameFont > 10) {
-    nameFont -= 1;
-    ctx.font = `700 ${Math.round(nameFont)}px 'Ancizar Serif', Georgia, serif`;
-  }
-  ctx.fillText(state.texts.title.toUpperCase(), marginL, y1 + topInset + nameFont * 0.78);
+  const marginL = 31 * scale;
+  const dividerMargin = 22 * scale;
+  const maxNameWidth = colSplit1 - marginL - dividerMargin;
+  const subFont = 29 * scale;
+  const blockGap = 6 * scale;
+
+  const desiredTitlePx = state.titleFontSizePt * 1.933 * scale;
+  const availableBlockH = h1 * 0.92;
+  const maxTitleFontByHeight = Math.max(10, (availableBlockH - subFont - blockGap) / 0.85);
+  const desiredTitlePxClamped = Math.min(desiredTitlePx, maxTitleFontByHeight);
+
+  const nameText = state.texts.title.toUpperCase();
+  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
+  const nameFont = getFittedFontSize(ctx, nameText, maxNameWidth, desiredTitlePxClamped, 700, fontFamilySerif);
+
+  const titleLineH = nameFont * 0.85;
+  const blockH = titleLineH + blockGap + subFont;
+  const blockTop = y1 + (h1 - blockH) / 2;
+
+  ctx.font = `700 ${Math.round(nameFont)}px ${fontFamilySerif}`;
+  ctx.fillText(nameText, marginL, blockTop + nameFont * 0.78);
 
   ctx.font = `400 ${Math.round(subFont)}px 'DM Mono', monospace`;
   ctx.fillStyle = translucentInk(ribbonInk, 0.75);
-  ctx.fillText(state.texts.subtitle.toUpperCase(), marginL, y1 + h1 - bottomInset);
+  ctx.fillText(state.texts.subtitle.toUpperCase(), marginL, blockTop + titleLineH + blockGap + subFont * 0.78);
 
   // Línea divisoria vertical, fija en Café Espresso
   const dividerW = Math.max(1, 2 * scale);
@@ -781,6 +805,7 @@ function renderTemplateA(ctx, W, H) {
 function renderTemplateB(ctx, W, H) {
   const bg = state.themeColor;
   const ink = inkFor(bg);
+  const titleFactor = state.titleFontSizePt / 30;
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
@@ -795,7 +820,8 @@ function renderTemplateB(ctx, W, H) {
   const centerY = H * 0.5;
 
   if (showPhoto) {
-    ctx.font = `400 ${Math.round(W * 0.028)}px 'Ancizar Serif', Georgia, serif`;
+    const smallFont = getFittedFontSize(ctx, state.texts.title, W * 0.7, W * 0.028 * titleFactor, 400, "'Ancizar Serif', Georgia, serif");
+    ctx.font = `400 ${Math.round(smallFont)}px 'Ancizar Serif', Georgia, serif`;
     ctx.textBaseline = 'middle';
     const smallLines = wrapText(ctx, state.texts.title, W * 0.7);
     const smallLineH = W * 0.04;
@@ -815,8 +841,8 @@ function renderTemplateB(ctx, W, H) {
     ctx.restore();
   } else {
     const maxWidth = W * 0.78;
-    const maxFont = W * 0.075;
-    const minFont = W * 0.035;
+    const maxFont = W * 0.075 * titleFactor;
+    const minFont = W * 0.035 * titleFactor;
     let fontSize = maxFont;
     let lines = [];
     ctx.textBaseline = 'middle';
@@ -826,6 +852,12 @@ function renderTemplateB(ctx, W, H) {
       const blockH = lines.length * fontSize * 1.15;
       if (blockH <= H * 0.32 && lines.length <= 4) break;
     }
+    // Resguardo final: si incluso en minFont alguna línea excede el ancho
+    // (palabra única muy larga), recorta sin deformar glifos.
+    lines.forEach((ln) => {
+      const fitted = getFittedFontSize(ctx, ln, maxWidth, fontSize, 700, "'Ancizar Serif', Georgia, serif");
+      fontSize = Math.min(fontSize, fitted);
+    });
     ctx.font = `700 ${Math.round(fontSize)}px 'Ancizar Serif', Georgia, serif`;
     const lineH = fontSize * 1.15;
     const startY = centerY - ((lines.length - 1) * lineH) / 2;
@@ -858,9 +890,19 @@ function renderTemplateC(ctx, W, H) {
   ctx.fillStyle = ink;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.font = `700 ${Math.round(colW * 0.11)}px 'Ancizar Serif', Georgia, serif`;
-  const titleLines = wrapText(ctx, state.texts.title, colW - pad * 2);
-  const titleLineH = colW * 0.125;
+  const titleFactor = state.titleFontSizePt / 30;
+  const titleMaxWidth = colW - pad * 2;
+  let titleFont = colW * 0.11 * titleFactor;
+  ctx.font = `700 ${Math.round(titleFont)}px 'Ancizar Serif', Georgia, serif`;
+  let titleLines = wrapText(ctx, state.texts.title, titleMaxWidth);
+  // Si alguna línea sigue excediendo el ancho (p. ej. una palabra larga que
+  // no se puede partir), reduce sin deformar hasta que todas quepan.
+  while (titleLines.some((ln) => ctx.measureText(ln).width > titleMaxWidth) && titleFont > 10) {
+    titleFont -= 1;
+    ctx.font = `700 ${Math.round(titleFont)}px 'Ancizar Serif', Georgia, serif`;
+    titleLines = wrapText(ctx, state.texts.title, titleMaxWidth);
+  }
+  const titleLineH = titleFont * 1.14;
   titleLines.slice(0, 3).forEach((ln, i) => {
     cursorY += titleLineH;
     ctx.fillText(ln, pad, cursorY);
@@ -894,7 +936,14 @@ function renderTemplateD(ctx, W, H) {
 
   // Titular central — saltos de línea manuales, interlineado compacto.
   const lines = state.texts.headlineD.split('\n').filter((l) => l.length > 0);
-  const fontSize = 122 * s;
+  const titleFactor = state.titleFontSizePt / 30;
+  const maxLineWidth = W * 0.88;
+  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
+  let fontSize = 122 * s * titleFactor;
+  lines.forEach((ln) => {
+    const fitted = getFittedFontSize(ctx, ln, maxLineWidth, fontSize, 700, fontFamilySerif);
+    fontSize = Math.min(fontSize, fitted);
+  });
   const lineH = fontSize * 0.96;
   const blockH = lines.length * lineH;
   const startY = H * 0.46 - blockH / 2 + lineH / 2;
@@ -903,7 +952,7 @@ function renderTemplateD(ctx, W, H) {
   ctx.fillStyle = ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `700 ${Math.round(fontSize)}px 'Ancizar Serif', Georgia, serif`;
+  ctx.font = `700 ${Math.round(fontSize)}px ${fontFamilySerif}`;
   lines.forEach((ln, i) => ctx.fillText(ln, W / 2, startY + i * lineH));
   ctx.restore();
 
@@ -1230,6 +1279,25 @@ function buildTextControls() {
   secondary.addEventListener('input', () => { state.texts.secondary = secondary.value; scheduleRedraw(); });
   web.addEventListener('input', () => { state.texts.web = web.value; scheduleRedraw(); });
   headlineD.addEventListener('input', () => { state.texts.headlineD = headlineD.value; scheduleRedraw(); });
+
+  const titleSizeSlider = document.getElementById('titleSizeSlider');
+  const outTitleSize = document.getElementById('out-title-size');
+  const titleSizeReset = document.getElementById('ctl-title-size-reset');
+
+  titleSizeSlider.value = state.titleFontSizePt;
+  outTitleSize.textContent = `${state.titleFontSizePt} pt`;
+
+  titleSizeSlider.addEventListener('input', () => {
+    state.titleFontSizePt = Number(titleSizeSlider.value);
+    outTitleSize.textContent = `${titleSizeSlider.value} pt`;
+    scheduleRedraw();
+  });
+  titleSizeReset.addEventListener('click', () => {
+    state.titleFontSizePt = 30;
+    titleSizeSlider.value = 30;
+    outTitleSize.textContent = '30 pt';
+    scheduleRedraw();
+  });
 
   const phraseWrap = document.getElementById('ctl-phrases');
   PHRASES.forEach((phrase) => {
