@@ -159,8 +159,24 @@ const svgTextCache = new Map(); // path -> raw svg text
 function loadImageFromURL(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Tiempo de espera agotado cargando: ${url}`));
+    }, 2000);
+    img.onload = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(img);
+    };
+    img.onerror = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    };
     img.src = url;
   });
 }
@@ -255,7 +271,10 @@ async function waitForFonts() {
   ];
   try {
     await Promise.all(specs.map((s) => document.fonts.load(s)));
-    await document.fonts.ready;
+    // Carrera con límite de tiempo: document.fonts.ready puede no resolver
+    // nunca en algunos navegadores/condiciones de red; nunca debe bloquear
+    // el primer render del canvas más de 1.2s.
+    await Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 1200))]);
   } catch (err) {
     console.warn('Carga de fuentes incompleta, se continúa igualmente.', err);
   }
@@ -1673,38 +1692,44 @@ async function generateLogoPack() {
 }
 
 function buildResourceCenter() {
-  document.getElementById('ctl-open-export-modal').addEventListener('click', openExportModal);
-  document.getElementById('export-modal-close').addEventListener('click', closeExportModal);
-  document.getElementById('export-modal-overlay').addEventListener('click', closeExportModal);
+  // Blindaje: si algún ID cambió o falta en el HTML, usar encadenamiento
+  // opcional evita un TypeError que detendría boot() antes del primer render.
+  document.getElementById('ctl-open-export-modal')?.addEventListener('click', openExportModal);
+  document.getElementById('export-modal-close')?.addEventListener('click', closeExportModal);
+  document.getElementById('export-modal-overlay')?.addEventListener('click', closeExportModal);
 
   const colorsWrap = document.getElementById('export-modal-colors');
-  SWATCHES.forEach((sw) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'swatch';
-    btn.style.background = sw.hex;
-    btn.title = sw.label;
-    btn.dataset.hex = sw.hex;
-    btn.setAttribute('aria-label', sw.label);
-    if (sw.hex === exportModalState.color) btn.classList.add('active');
-    btn.addEventListener('click', () => {
-      exportModalState.color = sw.hex;
-      colorsWrap.querySelectorAll('.swatch').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
+  if (colorsWrap) {
+    SWATCHES.forEach((sw) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'swatch';
+      btn.style.background = sw.hex;
+      btn.title = sw.label;
+      btn.dataset.hex = sw.hex;
+      btn.setAttribute('aria-label', sw.label);
+      if (sw.hex === exportModalState.color) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        exportModalState.color = sw.hex;
+        colorsWrap.querySelectorAll('.swatch').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      colorsWrap.appendChild(btn);
     });
-    colorsWrap.appendChild(btn);
-  });
+  }
 
   const formatsWrap = document.getElementById('export-modal-formats');
-  formatsWrap.querySelectorAll('.vastago-export-pill').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      exportModalState.format = btn.dataset.format;
-      formatsWrap.querySelectorAll('.vastago-export-pill').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
+  if (formatsWrap) {
+    formatsWrap.querySelectorAll('.vastago-export-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        exportModalState.format = btn.dataset.format;
+        formatsWrap.querySelectorAll('.vastago-export-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
     });
-  });
+  }
 
-  document.getElementById('export-modal-generate').addEventListener('click', generateLogoPack);
+  document.getElementById('export-modal-generate')?.addEventListener('click', generateLogoPack);
 }
 
 /* ---------------------------------------------------------
@@ -1712,24 +1737,42 @@ function buildResourceCenter() {
    --------------------------------------------------------- */
 
 async function boot() {
-  buildFormatSelect();
-  buildTemplateSelector();
-  buildPhotoControls();
-  buildTextControls();
-  buildColorControls();
-  buildLogoVariantControl();
-  buildBadgeGrid();
-  buildCanvasInteraction();
-  buildExport();
-  buildResourceCenter();
-  applyTemplateLabels();
+  // Blindaje de arranque: pase lo que pase (un elemento del DOM faltante,
+  // un asset que nunca cargue, una fuente que nunca resuelva), el canvas
+  // SIEMPRE debe salir del estado "Cargando…" — por eso assetsReady se
+  // fuerza a true y se vuelve a dibujar en el finally, sin excepción.
+  try {
+    buildFormatSelect();
+    buildTemplateSelector();
+    buildPhotoControls();
+    buildTextControls();
+    buildColorControls();
+    buildLogoVariantControl();
+    buildBadgeGrid();
+    buildCanvasInteraction();
+    buildExport();
+    buildResourceCenter();
+    applyTemplateLabels();
 
-  redraw(); // show "Cargando…" placeholder immediately
+    redraw(); // show "Cargando…" placeholder immediately
 
-  await Promise.all([waitForFonts(), preloadAllAssets()]);
-
-  assetsReady = true;
-  redraw();
+    // Límite de tiempo global de respaldo: si fuentes/assets tardan
+    // demasiado o alguna promesa queda colgada, no bloquear el arranque
+    // más de 6s.
+    await Promise.race([
+      Promise.all([waitForFonts(), preloadAllAssets()]),
+      new Promise((resolve) => setTimeout(resolve, 6000)),
+    ]);
+  } catch (err) {
+    console.error('Error en boot():', err);
+  } finally {
+    assetsReady = true;
+    redraw();
+  }
 }
 
-boot();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
