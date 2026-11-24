@@ -50,6 +50,21 @@ const PHRASES = [
   'Viaja, muévete y descubre. Valdrá la pena.',
 ];
 
+// Párrafos editoriales en inglés para la columna vertical lateral de la
+// Plantilla A (estilo lookbook/streetwear).
+const ENGLISH_EDITORIAL_PARAGRAPHS = [
+  'We create pieces that move with your daily rhythm and connect the everyday with the extraordinary. Every ride adds story, and every detail is born from handmade craft rooted in Cali.',
+  'No matter how the route looks, there is always a way to ride it and enjoy it. We design through resilience, love, and creativity for those who move through the street on their own terms.',
+  'Craft feels real when it lives inside your everyday routine. Pieces made to roll unhurried, gather miles, and carry who you are.',
+  'Life on a bike rolls better when every object has purpose and character. Since 2005, we’ve turned movement and craft into handmade pieces for the city and the road.',
+  'Born in Cali with the bicycle as our compass and the workshop as our starting point. Our pieces cross everyday asphalt with a quiet, direct aesthetic built to last.',
+  'One stitch at a time, one street at a time. We make essential objects for people who treat movement as a way of seeing and inhabiting the world.',
+  'Leather pieces worked slowly, by hand, with obsessive care for every detail. A meeting point between slow artisan craft and the everyday attitude of riding out.',
+  'Every piece holds the time of the workshop and the energy of the person wearing it. Handcrafted in Colombia to travel, move, and discover what’s worth the ride.',
+  'Slow-handcrafted pieces born from cycling culture and daily movement. From Cali, Colombia—stories on wheels made to turn the ordinary into something lasting.',
+  'Bicycle art since 2005—made by hand for real routes and everyday life. Resilience, craft, and street character in every piece.',
+];
+
 // Monochrome brand-ink SVGs share this baked-in fill color; swapping it lets
 // us derive flat-ink variants from a single source file without a canvas tint.
 const MONO_SOURCE_HEX = '#3e2e17';
@@ -64,6 +79,7 @@ const BADGES = [
   { id: 'sellocircular', label: 'Sello Circular', file: 'badge-sello-circular.svg', mono: true },
   { id: 'sellotexto', label: 'Sello Bictr', file: 'badge-sello-texto.svg', mono: true },
   { id: 'etiqueta', label: 'Etiqueta', file: 'badge-etiqueta.svg', mono: true },
+  { id: 'propertycali', label: 'Property of Santiago de Cali', file: 'badge-property-cali.svg', fallbackFile: 'badge-property-cali.png', mono: false },
 ];
 
 // Variantes de logotipo del manual de marca. El color se aplica en tiempo real
@@ -133,6 +149,7 @@ const state = {
     secondary: DEFAULT_SECONDARY.A,
     web: 'www.bictoria.com',
     headlineD: 'La vida\nen Bici\nrueda\nmejor',
+    editorialEn: ENGLISH_EDITORIAL_PARAGRAPHS[1],
   },
   themeColor: COLORS.marfil,
   bgColorD: COLORS.naranja,
@@ -140,6 +157,7 @@ const state = {
   logoColor: COLORS.espresso, // hex — se recalcula al cambiar el tema, pero el usuario puede forzarlo.
   ribbonColor: COLORS.amarilloPalido,
   titleFontSizePt: 30, // controla el tamaño del nombre/título en todas las plantillas
+  showEditorialEn: true, // columna vertical lateral en inglés (Plantilla A)
   badges: [], // { uid, defId, x, y, scale, rotation, backdrop }
   selectedBadgeUid: null,
 };
@@ -191,6 +209,29 @@ async function loadPlainSVG(path) {
     console.warn(`No se pudo cargar el asset "${path}":`, err);
     imageCache.set(path, null);
     return null;
+  }
+}
+
+// Igual que loadPlainSVG, pero si el archivo primario no existe (ej. un
+// badge nuevo cuyo .svg aún no fue entregado) intenta un .png de respaldo,
+// cacheando el resultado bajo la MISMA clave para que getBadgeImage lo
+// encuentre de forma transparente.
+async function loadImageWithFallback(path, fallbackPath) {
+  if (imageCache.has(path)) return imageCache.get(path);
+  try {
+    const img = await loadImageFromURL(`./assets/${path}`);
+    imageCache.set(path, img);
+    return img;
+  } catch (err) {
+    try {
+      const img = await loadImageFromURL(`./assets/${fallbackPath}`);
+      imageCache.set(path, img);
+      return img;
+    } catch (err2) {
+      console.warn(`No se pudo cargar "${path}" ni su respaldo "${fallbackPath}":`, err2);
+      imageCache.set(path, null);
+      return null;
+    }
   }
 }
 
@@ -251,7 +292,9 @@ async function preloadAllAssets() {
     loadPlainSVG('badge-bictr-2005.svg'),
   ];
   for (const b of BADGES) {
-    jobs.push(b.mono ? loadMonoSVG(b.file, COLORS.espresso) : loadPlainSVG(b.file));
+    if (b.mono) jobs.push(loadMonoSVG(b.file, COLORS.espresso));
+    else if (b.fallbackFile) jobs.push(loadImageWithFallback(b.file, b.fallbackFile));
+    else jobs.push(loadPlainSVG(b.file));
   }
   await Promise.all(jobs);
 }
@@ -700,6 +743,44 @@ function renderTemplateA(ctx, W, H) {
   const y1 = y2 - h1;
   const colSplit1 = W * 0.34;
   const colSplit2 = W * 0.683;
+
+  // ---- Columna vertical de párrafo editorial (estilo lookbook/streetwear) ----
+  // Se lee de abajo hacia arriba (rotación -90°), entre la pestaña superior
+  // derecha y la Banda 1, sin invadir ninguna de las dos.
+  if (state.showEditorialEn && state.texts.editorialEn) {
+    const colX = W * 0.935;
+    const yStart = 215 * uScale;
+    const yEnd = y1 - 24 * uScale;
+    const availableSpan = yEnd - yStart;
+    if (availableSpan > 20) {
+      const editorialFontFamily = "'DM Mono', monospace";
+      const minReadableFont = 14 * uScale;
+      let editorialFont = getFittedFontSize(ctx, state.texts.editorialEn, availableSpan, 22 * uScale, 400, editorialFontFamily);
+      let editorialText = state.texts.editorialEn;
+      if (editorialFont < minReadableFont) {
+        // Un párrafo demasiado largo para el espacio disponible nunca debe
+        // encogerse a un tamaño ilegible: se fija un piso legible y en su
+        // lugar se recorta el texto con elipsis hasta que quepa.
+        editorialFont = minReadableFont;
+        ctx.font = `400 ${Math.round(editorialFont)}px ${editorialFontFamily}`;
+        while (editorialText.length > 0 && ctx.measureText(`${editorialText}…`).width > availableSpan) {
+          editorialText = editorialText.slice(0, -1);
+        }
+        editorialText = `${editorialText.trimEnd()}…`;
+      }
+      ctx.save();
+      ctx.translate(colX, yEnd);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = `400 ${Math.round(editorialFont)}px ${editorialFontFamily}`;
+      ctx.fillStyle = COLORS.marfil;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+      ctx.shadowBlur = 6 * uScale;
+      ctx.fillText(editorialText, 0, 0);
+      ctx.restore();
+    }
+  }
 
   // Columna izquierda — nombre + subtítulo.
   // El tamaño del nombre lo controla el usuario (state.titleFontSizePt);
@@ -1259,6 +1340,8 @@ function applyTemplateLabels() {
   document.getElementById('field-show-photo-b').classList.toggle('is-hidden', state.template !== 'B');
   document.getElementById('field-ribbon-color').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-web').classList.toggle('is-hidden', state.template !== 'A');
+  document.getElementById('field-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
+  document.getElementById('field-show-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-bg-color-d').classList.toggle('is-hidden', state.template !== 'D');
   document.getElementById('field-headline-d').classList.toggle('is-hidden', state.template !== 'D');
   document.getElementById('field-logo-variant').classList.toggle('is-hidden', !(state.template === 'B' || state.template === 'C'));
@@ -1360,6 +1443,46 @@ function buildTextControls() {
   secondary.addEventListener('input', () => { state.texts.secondary = secondary.value; scheduleRedraw(); });
   web.addEventListener('input', () => { state.texts.web = web.value; scheduleRedraw(); });
   headlineD.addEventListener('input', () => { state.texts.headlineD = headlineD.value; scheduleRedraw(); });
+
+  const editorialSelect = document.getElementById('editorialParagraphSelect');
+  const editorialInput = document.getElementById('editorialParagraphInput');
+  const editorialShuffle = document.getElementById('ctl-editorial-shuffle');
+  const showEditorialCheckbox = document.getElementById('ctl-show-editorial-en');
+
+  ENGLISH_EDITORIAL_PARAGRAPHS.forEach((paragraph, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `${i + 1}. ${paragraph.slice(0, 48)}…`;
+    editorialSelect.appendChild(opt);
+  });
+  const initialEditorialIndex = ENGLISH_EDITORIAL_PARAGRAPHS.indexOf(state.texts.editorialEn);
+  editorialSelect.value = String(initialEditorialIndex >= 0 ? initialEditorialIndex : 1);
+  editorialInput.value = state.texts.editorialEn;
+  showEditorialCheckbox.checked = state.showEditorialEn;
+
+  editorialSelect.addEventListener('change', () => {
+    const paragraph = ENGLISH_EDITORIAL_PARAGRAPHS[Number(editorialSelect.value)];
+    state.texts.editorialEn = paragraph;
+    editorialInput.value = paragraph;
+    scheduleRedraw();
+  });
+  editorialInput.addEventListener('input', () => {
+    state.texts.editorialEn = editorialInput.value;
+    scheduleRedraw();
+  });
+  editorialShuffle.addEventListener('click', () => {
+    const current = Number(editorialSelect.value) || 0;
+    const next = (current + 1) % ENGLISH_EDITORIAL_PARAGRAPHS.length;
+    const paragraph = ENGLISH_EDITORIAL_PARAGRAPHS[next];
+    state.texts.editorialEn = paragraph;
+    editorialSelect.value = String(next);
+    editorialInput.value = paragraph;
+    scheduleRedraw();
+  });
+  showEditorialCheckbox.addEventListener('change', (e) => {
+    state.showEditorialEn = e.target.checked;
+    scheduleRedraw();
+  });
 
   const titleSizeSlider = document.getElementById('titleSizeSlider');
   const outTitleSize = document.getElementById('out-title-size');
@@ -1471,7 +1594,20 @@ function buildBadgeGrid() {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'badge-item';
-    item.innerHTML = `<img src="./assets/${b.file}" alt="${b.label}" loading="lazy"><span>${b.label}</span>`;
+    const img = document.createElement('img');
+    img.src = `./assets/${b.file}`;
+    img.alt = b.label;
+    img.loading = 'lazy';
+    if (b.fallbackFile) {
+      img.addEventListener('error', function onImgError() {
+        img.removeEventListener('error', onImgError);
+        img.src = `./assets/${b.fallbackFile}`;
+      });
+    }
+    const span = document.createElement('span');
+    span.textContent = b.label;
+    item.appendChild(img);
+    item.appendChild(span);
     item.title = 'Añadir al centro del lienzo';
     item.addEventListener('click', () => addBadgeInstance(b.id));
     wrap.appendChild(item);
