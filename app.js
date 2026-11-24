@@ -819,24 +819,48 @@ function renderTemplateA(ctx, W, H) {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
 
     if (H >= W) {
-      // Columna lateral derecha, entre la pestaña superior y la Banda 1.
-      const rightMargin = 48 * uScale;
-      const colX = W - rightMargin;
-      const yStart = 215 * uScale;
-      const yEnd = y1 - 24 * uScale;
-      const availableSpan = yEnd - yStart;
-      if (availableSpan > 20) {
-        const fontSize = 21 * uScale;
-        const lineHeight = fontSize * 1.25;
-        const boxWidth = Math.min(300 * uScale, availableSpan);
+      // Columna vertical arquitectónica: ancho total EXACTO de la pestaña
+      // superior derecha (tabW), estrictamente contenida entre tabLeftX y
+      // tabRightX, entre la base de la pestaña y la Banda 1.
+      const tabW = 117 * uScale;
+      const tabRightMargin = 63 * uScale;
+      const tabLeftX = W - tabRightMargin - tabW;
+      const tabRightX = W - tabRightMargin;
+      const tabBottomY = 182 * uScale; // tabH
+
+      const yStart = tabBottomY + 28 * uScale;
+      const yEnd = y1 - 28 * uScale;
+      const boxLength = yEnd - yStart;
+
+      if (boxLength > 20) {
+        let fontSize = 18 * uScale;
+        let lineHeight = fontSize * 1.24;
+        ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
+        let lines = wrapText(ctx, state.texts.editorialEn, boxLength);
+        let totalColumnWidth = lines.length * lineHeight;
+        let guard = 0;
+        // Si el bloque de renglones apilados sobresale del ancho de la
+        // pestaña (tabW), reduce fontSize/lineHeight proporcionalmente.
+        while (totalColumnWidth > tabW && fontSize > 8 && guard < 10) {
+          fontSize *= Math.max(0.85, tabW / totalColumnWidth);
+          lineHeight = fontSize * 1.24;
+          ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
+          lines = wrapText(ctx, state.texts.editorialEn, boxLength);
+          totalColumnWidth = lines.length * lineHeight;
+          guard += 1;
+        }
+
+        // Centra el bloque (si quedó más angosto que tabW) entre tabLeftX y tabRightX.
+        const blockRightX = tabRightX - (tabW - totalColumnWidth) / 2;
+
         ctx.save();
-        ctx.translate(colX, yEnd);
+        ctx.translate(blockRightX, yEnd);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
         ctx.shadowBlur = 6 * uScale;
-        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxWidth, -lineHeight, true);
+        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxLength, -lineHeight, true);
         ctx.restore();
       }
     } else {
@@ -1578,6 +1602,13 @@ function buildPhotoControls() {
   });
 }
 
+function syncEditorialToggle(btn) {
+  const on = state.showEditorialEn;
+  btn.classList.toggle('is-on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.querySelector('.toggle-onoff-state').textContent = on ? '[ ON ]' : '[ OFF ]';
+}
+
 function buildTextControls() {
   const title = document.getElementById('ctl-title');
   const subtitle = document.getElementById('ctl-subtitle');
@@ -1603,7 +1634,7 @@ function buildTextControls() {
   const editorialSelect = document.getElementById('editorialParagraphSelect');
   const editorialInput = document.getElementById('editorialParagraphInput');
   const editorialShuffle = document.getElementById('ctl-editorial-shuffle');
-  const showEditorialCheckbox = document.getElementById('ctl-show-editorial-en');
+  const showEditorialToggle = document.getElementById('ctl-show-editorial-en');
 
   ENGLISH_EDITORIAL_PARAGRAPHS.forEach((paragraph, i) => {
     const opt = document.createElement('option');
@@ -1614,7 +1645,7 @@ function buildTextControls() {
   const initialEditorialIndex = ENGLISH_EDITORIAL_PARAGRAPHS.indexOf(state.texts.editorialEn);
   editorialSelect.value = String(initialEditorialIndex >= 0 ? initialEditorialIndex : 1);
   editorialInput.value = state.texts.editorialEn;
-  showEditorialCheckbox.checked = state.showEditorialEn;
+  syncEditorialToggle(showEditorialToggle);
 
   editorialSelect.addEventListener('change', () => {
     const paragraph = ENGLISH_EDITORIAL_PARAGRAPHS[Number(editorialSelect.value)];
@@ -1635,8 +1666,9 @@ function buildTextControls() {
     editorialInput.value = paragraph;
     scheduleRedraw();
   });
-  showEditorialCheckbox.addEventListener('change', (e) => {
-    state.showEditorialEn = e.target.checked;
+  showEditorialToggle.addEventListener('click', () => {
+    state.showEditorialEn = !state.showEditorialEn;
+    syncEditorialToggle(showEditorialToggle);
     scheduleRedraw();
   });
 

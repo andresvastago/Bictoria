@@ -115,10 +115,12 @@
         <textarea id="editorialParagraphInput" maxlength="400" rows="4"></textarea>
         <button type="button" class="btn-ghost small" id="ctl-editorial-shuffle">🎲 Alternar párrafo</button>
       </div>
-      <label class="checkbox" id="field-show-editorial-en">
-        <input type="checkbox" id="ctl-show-editorial-en" checked>
-        Mostrar párrafo vertical en ficha
-      </label>
+      <div class="field field-inline" id="field-show-editorial-en">
+        <label>Párrafo editorial en pieza</label>
+        <button type="button" class="toggle-onoff is-on" id="ctl-show-editorial-en" aria-pressed="true">
+          <span class="toggle-onoff-state">[ ON ]</span>
+        </button>
+      </div>
       <div class="field" id="field-editorial-horizontal-position">
         <label>Posición en horizontal</label>
         <div class="segmented small" id="ctl-editorial-horizontal-position">
