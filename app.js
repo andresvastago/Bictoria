@@ -819,48 +819,51 @@ function renderTemplateA(ctx, W, H) {
     ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
 
     if (H >= W) {
-      // Columna vertical arquitectónica: ancho total EXACTO de la pestaña
-      // superior derecha (tabW), estrictamente contenida entre tabLeftX y
-      // tabLeftX + tabW. Bucle de auto-escalado por decrementos fijos: nunca
-      // recorta ni descarta líneas, solo reduce fontSize hasta que TODAS las
-      // líneas quepan dentro de tabW.
+      // Columna vertical: origen exacto sin desplazamiento oculto. Al
+      // rotar -90°, el eje local X avanza hacia arriba en el canvas (de
+      // visibleBottomY a visibleTopY) y el eje local Y avanza hacia la
+      // derecha (de tabLeftX a tabLeftX + tabW).
       const tabW = 117 * uScale;
       const tabRightMargin = 63 * uScale;
       const tabLeftX = W - tabRightMargin - tabW;
-      const tabBottomY = 182 * uScale; // tabH
+      const tabBottomY = 182 * uScale; // dónde termina la curva inferior de la pestaña
+      const band1TopY = y1; // dónde empieza la banda de datos inferior
 
-      const yStartBound = tabBottomY + 36 * uScale;
-      const yEndBound = y1 - 32 * uScale;
-      const boxLength = yEndBound - yStartBound;
+      const visibleTopY = tabBottomY + 32 * uScale;
+      const visibleBottomY = band1TopY - 28 * uScale;
+      const visibleHeight = visibleBottomY - visibleTopY;
+      const visibleWidth = tabW;
 
-      if (boxLength > 20) {
-        const minFontSize = 10 * uScale;
-        let fontSize = 23 * uScale;
+      if (visibleHeight > 20) {
+        const minFontSize = 8 * uScale;
+        let fontSize = Math.min(24 * uScale, visibleHeight * 0.045);
         let lineHeight = fontSize * 1.22;
         let lines = [];
-        while (fontSize >= minFontSize) {
+        while (fontSize > minFontSize) {
           ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
-          lines = wrapText(ctx, state.texts.editorialEn, boxLength);
+          lines = wrapText(ctx, state.texts.editorialEn, visibleHeight);
           lineHeight = fontSize * 1.22;
-          if (lines.length * lineHeight <= tabW) break;
-          fontSize -= 0.5 * uScale;
+          if (lines.length * lineHeight <= visibleWidth) break;
+          fontSize -= 0.4 * uScale;
         }
         fontSize = Math.max(fontSize, minFontSize);
+        // Re-mide en el tamaño final asentado para que fontSize y lines
+        // queden siempre consistentes entre sí (sin desfase de la última
+        // iteración del bucle).
+        ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
+        lines = wrapText(ctx, state.texts.editorialEn, visibleHeight);
+        lineHeight = fontSize * 1.22;
 
-        // Interlineado final ajustado para llenar tabW exacto (sin exceder
-        // un máximo razonable de aire entre columnas cuando sobran líneas).
-        const finalLineHeight = Math.min(tabW / Math.max(lines.length, 1), 1.38 * fontSize);
-        const totalColumnWidth = lines.length * finalLineHeight;
-        const blockRightX = (tabLeftX + tabW) - (tabW - totalColumnWidth) / 2;
+        const offsetY = (visibleWidth - lines.length * lineHeight) / 2;
 
         ctx.save();
-        ctx.translate(blockRightX, yEndBound);
+        ctx.translate(tabLeftX, visibleBottomY);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'top';
         ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
         ctx.shadowBlur = 6 * uScale;
-        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxLength, -finalLineHeight, true);
+        drawJustifiedText(ctx, state.texts.editorialEn, 0, offsetY, visibleHeight, lineHeight, true);
         ctx.restore();
       }
     } else {
