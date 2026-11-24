@@ -45,6 +45,7 @@
         <button type="button" data-template="B">B · Editorial</button>
         <button type="button" data-template="C">C · Banner</button>
         <button type="button" data-template="D">D · Manifiesto</button>
+        <button type="button" data-template="E">E · Editorial</button>
       </div>
       <p class="hint" id="template-hint"></p>
     </section>
@@ -125,6 +126,11 @@
           <button type="button" data-position="top">Arriba (borde superior)</button>
         </div>
       </div>
+      <div class="field" id="field-credit-lines">
+        <label>Crédito editorial (esquina superior derecha)</label>
+        <input type="text" id="ctl-credit-line1" maxlength="40" placeholder="by Libardo Victoria">
+        <input type="text" id="ctl-credit-line2" maxlength="40" placeholder="Made in Cali">
+      </div>
       <div class="field" id="field-secondary">
         <label id="label-secondary">Texto secundario</label>
         <textarea id="ctl-secondary" maxlength="120" rows="2"></textarea>
@@ -147,6 +153,11 @@
       <div class="field" id="field-bg-color-d">
         <label>Color de Fondo (Plantilla D)</label>
         <div class="swatches" id="ctl-bg-color-d"></div>
+      </div>
+
+      <div class="field" id="field-bg-color-e">
+        <label>Color de Fondo sin foto (Plantilla E)</label>
+        <div class="swatches" id="ctl-bg-color-e"></div>
       </div>
 
       <div class="field" id="field-logo-variant">

@@ -118,6 +118,12 @@ const LABELS_BY_TEMPLATE = {
     price: null,
     secondary: null,
   },
+  E: {
+    title: null,
+    subtitle: null,
+    price: null,
+    secondary: null,
+  },
 };
 
 const TEMPLATE_HINTS = {
@@ -125,6 +131,7 @@ const TEMPLATE_HINTS = {
   B: 'Pieza editorial: fondo de color de marca, logotipo y frase.',
   C: 'Banner de dos columnas: texto de marca + fotografía.',
   D: 'Post solo tipográfico: manifiesto de marca sin fotografía, con sellos.',
+  E: 'Fotografía plena con isotipo superior izquierdo, crédito editorial arriba a la derecha y párrafo justificado al pie.',
 };
 
 const DEFAULT_SECONDARY = {
@@ -132,6 +139,7 @@ const DEFAULT_SECONDARY = {
   B: 'www.bictoria.com',
   C: 'www.bictoria.com',
   D: 'www.bictoria.com',
+  E: 'www.bictoria.com',
 };
 
 /* ---------------------------------------------------------
@@ -150,9 +158,12 @@ const state = {
     web: 'www.bictoria.com',
     headlineD: 'La vida\nen Bici\nrueda\nmejor',
     editorialEn: ENGLISH_EDITORIAL_PARAGRAPHS[1],
+    creditLine1: 'by Libardo Victoria',
+    creditLine2: 'Made in Cali',
   },
   themeColor: COLORS.marfil,
   bgColorD: COLORS.naranja,
+  bgColorE: COLORS.espresso,
   logoVariant: 'main',
   logoColor: COLORS.espresso, // hex — se recalcula al cambiar el tema, pero el usuario puede forzarlo.
   ribbonColor: COLORS.amarilloPalido,
@@ -354,7 +365,7 @@ function roundRectBottomOnly(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawPhotoCover(ctx, img, dx, dy, dw, dh, zoomPercent, offsetXPercent, offsetYPercent) {
+function drawPhotoCover(ctx, img, dx, dy, dw, dh, zoomPercent, offsetXPercent, offsetYPercent, placeholderBg = COLORS.amarilloPalido) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(dx, dy, dw, dh);
@@ -375,9 +386,10 @@ function drawPhotoCover(ctx, img, dx, dy, dw, dh, zoomPercent, offsetXPercent, o
     ctx.drawImage(img, baseX + panX, baseY + panY, drawW, drawH);
   } else {
     // Placeholder while no photo is loaded yet.
-    ctx.fillStyle = COLORS.amarilloPalido;
+    const placeholderInk = inkFor(placeholderBg);
+    ctx.fillStyle = placeholderBg;
     ctx.fillRect(dx, dy, dw, dh);
-    ctx.fillStyle = 'rgba(50,22,3,0.45)';
+    ctx.fillStyle = translucentInk(placeholderInk, 0.45);
     ctx.font = `500 ${Math.round(dw * 0.028)}px 'DM Mono', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -427,7 +439,10 @@ function getFittedFontSize(ctx, text, maxWidth, desiredPx, fontWeight, fontFamil
 // lineHeight puede ser negativo (usado dentro de un contexto rotado para que
 // los renglones se apilen en la dirección opuesta al eje de lectura).
 function drawJustifiedText(ctx, text, x, y, boxWidth, lineHeight, justifyLastLine = true) {
+  // wrapText ya recorre y conserva todas las palabras del texto (incluida la
+  // última): el acumulador final siempre se empuja a `lines` al terminar.
   const lines = wrapText(ctx, text, boxWidth);
+  const minGap = ctx.measureText(' ').width * 0.5;
   let currentY = y;
   lines.forEach((line, i) => {
     const words = line.split(/\s+/).filter(Boolean);
@@ -436,7 +451,7 @@ function drawJustifiedText(ctx, text, x, y, boxWidth, lineHeight, justifyLastLin
     } else if (i < lines.length - 1 || (justifyLastLine && words.length > 1)) {
       const wordsWidth = words.reduce((acc, w) => acc + ctx.measureText(w).width, 0);
       const totalSpace = Math.max(0, boxWidth - wordsWidth);
-      const gap = totalSpace / (words.length - 1);
+      const gap = Math.max(minGap, totalSpace / (words.length - 1));
       let cursorX = x;
       words.forEach((word) => {
         ctx.fillText(word, cursorX, currentY);
@@ -448,6 +463,27 @@ function drawJustifiedText(ctx, text, x, y, boxWidth, lineHeight, justifyLastLin
     currentY += lineHeight;
   });
   return lines.length;
+}
+
+// Encuentra el mayor tamaño de fuente (<= desiredFontSize) tal que el bloque
+// de texto envuelto en boxWidth quepa completo (todas las líneas) dentro de
+// maxBlockHeight, reduciendo fontSize y lineHeight proporcionalmente.
+function fitJustifiedBlock(ctx, text, boxWidth, desiredFontSize, lineHeightRatio, maxBlockHeight, fontWeight, fontFamily) {
+  let fontSize = desiredFontSize;
+  let lineHeight = fontSize * lineHeightRatio;
+  ctx.font = `${fontWeight} ${Math.round(fontSize)}px ${fontFamily}`;
+  let lines = wrapText(ctx, text, boxWidth);
+  let blockHeight = lines.length * lineHeight;
+  let guard = 0;
+  while (blockHeight > maxBlockHeight && fontSize > 10 && guard < 8) {
+    fontSize *= Math.max(0.88, maxBlockHeight / blockHeight);
+    lineHeight = fontSize * lineHeightRatio;
+    ctx.font = `${fontWeight} ${Math.round(fontSize)}px ${fontFamily}`;
+    lines = wrapText(ctx, text, boxWidth);
+    blockHeight = lines.length * lineHeight;
+    guard += 1;
+  }
+  return { fontSize, lineHeight, numLines: lines.length, blockHeight };
 }
 
 function drawImageContain(ctx, img, cx, cy, maxW, maxH, align = 'center') {
@@ -468,7 +504,7 @@ function drawImageContain(ctx, img, cx, cy, maxW, maxH, align = 'center') {
 // Dibuja un isotipo circular: un círculo relleno del color dado con la
 // silueta de la bicicleta recortada (destination-out), dejando ver el fondo
 // de la composición a través del icono — p. ej. círculo café con bici naranja.
-function drawCircularBikeIsotype(ctx, colorHex, cx, cy, size) {
+function drawCircularBikeIsotype(ctx, colorHex, cx, cy, size, bikeRatio = 0.58) {
   const r = size / 2;
   ctx.save();
   ctx.beginPath();
@@ -485,7 +521,7 @@ function drawCircularBikeIsotype(ctx, colorHex, cx, cy, size) {
     ctx.globalCompositeOperation = 'destination-out';
     const iw = bikeImg.naturalWidth || bikeImg.width;
     const ih = bikeImg.naturalHeight || bikeImg.height;
-    const scale = (size * 0.58) / Math.max(iw, ih);
+    const scale = (size * bikeRatio) / Math.max(iw, ih);
     const dw = iw * scale;
     const dh = ih * scale;
     ctx.drawImage(bikeImg, cx - dw / 2, cy - dh / 2, dw, dh);
@@ -784,7 +820,8 @@ function renderTemplateA(ctx, W, H) {
 
     if (H >= W) {
       // Columna lateral derecha, entre la pestaña superior y la Banda 1.
-      const colX = W * 0.935;
+      const rightMargin = 48 * uScale;
+      const colX = W - rightMargin;
       const yStart = 215 * uScale;
       const yEnd = y1 - 24 * uScale;
       const availableSpan = yEnd - yStart;
@@ -803,13 +840,15 @@ function renderTemplateA(ctx, W, H) {
         ctx.restore();
       }
     } else {
-      // Formato horizontal: franja arriba o abajo, sin rotar.
-      const fontSize = 19 * uScale;
-      const lineHeight = fontSize * 1.22;
-      const marginL = 31 * uScale;
+      // Formato horizontal: franja arriba o abajo, sin rotar, con márgenes
+      // laterales limpios y un piso de tamaño que se reduce proporcionalmente
+      // (fontSize + lineHeight) si el párrafo no cabría completo en el alto
+      // disponible, para que SIEMPRE se vea íntegro y nunca cortado a medias.
+      const desiredFontSize = 19 * uScale;
+      const lineHeightRatio = 1.22;
+      const marginSide = 36 * uScale;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
       ctx.shadowBlur = 5 * uScale;
 
       if (state.editorialHorizontalPosition === 'top') {
@@ -817,17 +856,21 @@ function renderTemplateA(ctx, W, H) {
         const tabMarginR = 63 * uScale;
         const tabX = W - tabMarginR - tabW;
         const maxRightX = tabX - 28 * uScale;
-        const boxWidth = Math.max(0, maxRightX - marginL);
-        const startY = 28 * uScale + fontSize * 0.85;
+        const boxWidth = Math.max(0, maxRightX - marginSide);
+        const startYBase = 28 * uScale;
+        const maxBlockHeight = Math.max(40, y1 - 24 * uScale - startYBase);
         if (boxWidth > 40) {
-          drawJustifiedText(ctx, state.texts.editorialEn, marginL, startY, boxWidth, lineHeight, true);
+          const fit = fitJustifiedBlock(ctx, state.texts.editorialEn, boxWidth, desiredFontSize, lineHeightRatio, maxBlockHeight, 400, editorialFontFamily);
+          ctx.font = `400 ${Math.round(fit.fontSize)}px ${editorialFontFamily}`;
+          drawJustifiedText(ctx, state.texts.editorialEn, marginSide, startYBase + fit.fontSize * 0.85, boxWidth, fit.lineHeight, true);
         }
       } else {
         const boxWidth = W * 0.45;
-        const probeLines = wrapText(ctx, state.texts.editorialEn, boxWidth);
-        const blockHeight = probeLines.length * lineHeight;
-        const startY = y1 - 24 * uScale - blockHeight + fontSize * 0.85;
-        drawJustifiedText(ctx, state.texts.editorialEn, marginL, startY, boxWidth, lineHeight, true);
+        const maxBlockHeight = Math.min(H * 0.4, Math.max(40, y1 - 24 * uScale - 20 * uScale));
+        const fit = fitJustifiedBlock(ctx, state.texts.editorialEn, boxWidth, desiredFontSize, lineHeightRatio, maxBlockHeight, 400, editorialFontFamily);
+        ctx.font = `400 ${Math.round(fit.fontSize)}px ${editorialFontFamily}`;
+        const startY = y1 - 24 * uScale - fit.blockHeight + fit.fontSize * 0.85;
+        drawJustifiedText(ctx, state.texts.editorialEn, marginSide, startY, boxWidth, fit.lineHeight, true);
       }
     }
     ctx.shadowBlur = 0;
@@ -848,8 +891,8 @@ function renderTemplateA(ctx, W, H) {
   const marginL = 31 * uScale;
   const dividerMargin = 22 * uScale;
   const maxNameWidth = colSplit1 - marginL - dividerMargin;
-  const subFont = 29 * uScale;
-  const blockGap = 6 * uScale;
+  const subFont = 26 * uScale; // COLECCIÓN RUTAS — acercada al nombre con gapTitleSub
+  const blockGap = 6 * uScale; // gapTitleSub: separación corta y precisa nombre→colección
 
   const desiredTitlePx = state.titleFontSizePt * 1.933 * uScale;
   const availableBlockH = h1 * 0.92;
@@ -881,9 +924,11 @@ function renderTemplateA(ctx, W, H) {
   ctx.fillStyle = ribbonInk;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const priceMaxWidth = (colSplit2 - colSplit1) - 24 * uScale;
+  const gapSubPrice = 24 * uScale; // aire lateral del precio frente a la columna de nombre/colección
+  const priceMaxWidth = (colSplit2 - colSplit1) - gapSubPrice;
   const priceFont = getFittedFontSize(ctx, state.texts.price, priceMaxWidth, 50 * uScale, 500, "'DM Mono', monospace");
   ctx.font = `500 ${Math.round(priceFont)}px 'DM Mono', monospace`;
+  // Centrado vertical dentro de la altura útil de la banda: nunca toca bordes.
   ctx.fillText(state.texts.price, (colSplit1 + colSplit2) / 2, y1 + h1 / 2);
 
   // Columna derecha — envíos, hasta 3 líneas centradas. Con las bandas ya
@@ -1081,7 +1126,7 @@ function renderTemplateD(ctx, W, H) {
   const bg = state.bgColorD;
   const ink = inkFor(bg);
   const uScale = Math.min(W, H) / 1080;
-  const titleFactor = state.titleFontSizePt / 30;
+  const sizeRatio = (state.titleFontSizePt || 30) / 30;
   const isWide = W > H;
   const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
 
@@ -1098,70 +1143,62 @@ function renderTemplateD(ctx, W, H) {
   }
 
   // Ancho máximo del titular: más panorámico en horizontal.
-  const maxLineWidth = isWide ? W * 0.72 : W * 0.88;
-  let headlineFont0 = (isWide ? 92 : 120) * uScale * titleFactor;
+  const maxLineWidth = W * (isWide ? 0.68 : 0.78);
+  let headlineFont0 = (isWide ? 96 : 124) * uScale * sizeRatio;
   lines.forEach((ln) => {
     const fitted = getFittedFontSize(ctx, ln, maxLineWidth, headlineFont0, 700, fontFamilySerif);
     headlineFont0 = Math.min(headlineFont0, fitted);
   });
 
-  // ---- Distribución vertical secuencial sin colisiones ----
-  // Tamaños nominales (antes del posible reajuste de grupo "g").
-  const emblemSize0 = 92 * uScale;
+  // ---- Alturas nominales de cada bloque, antes del reajuste de grupo ----
+  const iconH0 = 96 * uScale;
   const subFont0 = 24 * uScale;
-  const sealSize0 = 150 * uScale;
-  const topMargin0 = 36 * uScale;
-  const bottomMargin0 = 36 * uScale;
-  const gap0 = 32 * uScale;
-  const gapFloor = 22 * uScale;
+  const badgeW0 = 150 * uScale;
+  const sealImg = imageCache.get('badge-bictr-2005.svg');
+  const sealAspect = sealImg ? (sealImg.naturalHeight || sealImg.height) / (sealImg.naturalWidth || sealImg.width) : 1;
+  const badgeH0 = badgeW0 * sealAspect;
 
-  const totalHeightFor = (g) => {
-    const headlineLineH = headlineFont0 * g * 0.96;
-    const subLineH = subFont0 * g * 1.3;
-    const gap = Math.max(gapFloor, gap0 * g);
-    return (
-      topMargin0 * g +
-      emblemSize0 * g +
-      gap +
-      lines.length * headlineLineH +
-      gap +
-      2 * subLineH +
-      gap +
-      sealSize0 * g +
-      bottomMargin0 * g
-    );
-  };
+  const gap1_0 = 44 * uScale; // isotipo → titular
+  const gap2_0 = 42 * uScale; // titular → subtítulo
+  const gap3_0 = 36 * uScale; // subtítulo → badge
 
-  let g = 1;
-  const nominalTotal = totalHeightFor(1);
-  const maxAllowedH = H * 0.88;
-  if (nominalTotal > maxAllowedH) {
-    g = Math.max(0.3, maxAllowedH / nominalTotal);
-  }
+  const headlineLineH0 = headlineFont0 * 1.08;
+  const titleBlockH0 = lines.length * headlineLineH0;
+  const subLineH0 = subFont0 * 1.3;
+  const subtitleBlockH0 = 2 * subLineH0;
 
-  const emblemSize = emblemSize0 * g;
-  const headlineFont = headlineFont0 * g;
-  const headlineLineH = headlineFont * 0.96;
-  const headlineBlockH = lines.length * headlineLineH;
-  const subFont = subFont0 * g;
+  const totalContentHeight0 = iconH0 + gap1_0 + titleBlockH0 + gap2_0 + subtitleBlockH0 + gap3_0 + badgeH0;
+  const maxAllowedH = H * 0.86;
+  const fitScale = totalContentHeight0 > maxAllowedH ? maxAllowedH / totalContentHeight0 : 1;
+
+  const iconH = iconH0 * fitScale;
+  const headlineFont = headlineFont0 * fitScale;
+  const headlineLineH = headlineFont * 1.08;
+  const titleBlockH = lines.length * headlineLineH;
+  const subFont = subFont0 * fitScale;
   const subLineH = subFont * 1.3;
   const subtitleBlockH = 2 * subLineH;
-  const sealSize = sealSize0 * g;
-  const gap = Math.max(gapFloor, gap0 * g);
-  const topMargin = topMargin0 * g;
+  const badgeW = badgeW0 * fitScale;
+  const badgeH = badgeH0 * fitScale;
+  const gap1 = gap1_0 * fitScale;
+  const gap2 = gap2_0 * fitScale;
+  const gap3 = gap3_0 * fitScale;
 
-  // Coordenadas Y de arriba hacia abajo: isotipo → titular → subtítulo → sello.
-  let cursorY = topMargin;
-  const emblemCenterY = cursorY + emblemSize / 2;
-  cursorY += emblemSize + gap;
+  const totalContentHeight = iconH + gap1 + titleBlockH + gap2 + subtitleBlockH + gap3 + badgeH;
+
+  // Centrado del conjunto alrededor de H * 0.5, orden secuencial descendente:
+  // isotipo → titular → subtítulo → sello.
+  let cursorY = H * 0.5 - totalContentHeight / 2;
+  const emblemCenterY = cursorY + iconH / 2;
+  cursorY += iconH + gap1;
   const headlineStartY = cursorY + headlineLineH / 2;
-  cursorY += headlineBlockH + gap;
+  cursorY += titleBlockH + gap2;
   const subtitleStartY = cursorY + subLineH / 2;
-  cursorY += subtitleBlockH + gap;
-  const sealCenterY = cursorY + sealSize / 2;
+  cursorY += subtitleBlockH + gap3;
+  const sealCenterY = cursorY + badgeH / 2;
 
-  // Emblema circular superior
-  drawCircularBikeIsotype(ctx, ink, W / 2, emblemCenterY, emblemSize);
+  // Emblema circular superior (isotipo de bicicleta a ~56% del diámetro)
+  drawCircularBikeIsotype(ctx, ink, W / 2, emblemCenterY, iconH, 0.56);
 
   // Titular central
   ctx.save();
@@ -1184,10 +1221,73 @@ function renderTemplateD(ctx, W, H) {
   ctx.restore();
 
   // Sello vertical clásico inferior (arte real, teñido a la tinta de contraste).
-  const sealImg = imageCache.get('badge-bictr-2005.svg');
   if (sealImg) {
     const tinted = getTintedImage('badge-bictr-2005.svg', sealImg, ink);
-    drawImageContain(ctx, tinted, W / 2, sealCenterY, sealSize, sealSize);
+    drawImageContain(ctx, tinted, W / 2, sealCenterY, badgeW, badgeH);
+  }
+}
+
+function renderTemplateE(ctx, W, H) {
+  const uScale = Math.min(W, H) / 1080;
+  const fontFamilySerif = "'Ancizar Serif', Georgia, serif";
+  const fontFamilyMono = "'DM Mono', monospace";
+
+  // ---- Fondo / fotografía plena ----
+  drawPhotoCover(ctx, state.photo.img, 0, 0, W, H, state.photo.zoom, state.photo.offsetX, state.photo.offsetY, state.bgColorE);
+
+  // ---- Esquina superior izquierda: isotipo circular ----
+  const iconSize = 88 * uScale;
+  const marginTL = 34 * uScale;
+  drawCircularBikeIsotype(ctx, COLORS.espresso, marginTL + iconSize / 2, marginTL + iconSize / 2, iconSize, 0.58);
+
+  // ---- Esquina superior derecha: crédito editorial (2 líneas) ----
+  const marginTR = 34 * uScale;
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.fillStyle = COLORS.marfil;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+  ctx.shadowBlur = 5 * uScale;
+
+  const creditFont1 = 24 * uScale;
+  const creditFont2 = 22 * uScale;
+  const creditGap = creditFont1 * 0.9;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `italic 400 ${Math.round(creditFont1)}px ${fontFamilySerif}`;
+  ctx.fillText(state.texts.creditLine1, W - marginTR, marginTR + creditFont1 * 0.85);
+  ctx.font = `500 ${Math.round(creditFont2)}px ${fontFamilyMono}`;
+  ctx.fillText(state.texts.creditLine2, W - marginTR, marginTR + creditFont1 * 0.85 + creditGap);
+  ctx.restore();
+
+  // ---- Parte inferior: párrafo editorial justificado, con degradado de
+  // contraste y garantía de que se vea íntegro (nunca cortado a medias). ----
+  if (state.texts.editorialEn) {
+    const paraMarginSide = 36 * uScale;
+    const paraMarginBottom = 36 * uScale;
+    const paraBoxWidth = W - paraMarginSide * 2;
+    const maxParaBlockHeight = H * 0.45;
+    ctx.font = `400 ${Math.round(26 * uScale)}px ${fontFamilyMono}`;
+    const fit = fitJustifiedBlock(ctx, state.texts.editorialEn, paraBoxWidth, 26 * uScale, 1.35, maxParaBlockHeight, 400, fontFamilyMono);
+
+    const gradientHeight = Math.min(H, fit.blockHeight + paraMarginBottom * 2.2);
+    const gradY = H - gradientHeight;
+    const grad = ctx.createLinearGradient(0, gradY, 0, H);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, gradY, W, gradientHeight);
+    ctx.restore();
+
+    ctx.save();
+    ctx.font = `400 ${Math.round(fit.fontSize)}px ${fontFamilyMono}`;
+    ctx.fillStyle = COLORS.marfil;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    ctx.shadowBlur = 6 * uScale;
+    const startY = H - paraMarginBottom - fit.blockHeight + fit.fontSize * 0.85;
+    drawJustifiedText(ctx, state.texts.editorialEn, paraMarginSide, startY, paraBoxWidth, fit.lineHeight, true);
+    ctx.restore();
   }
 }
 
@@ -1223,7 +1323,8 @@ function redraw() {
   if (state.template === 'A') renderTemplateA(ctx, fmt.w, fmt.h);
   else if (state.template === 'B') renderTemplateB(ctx, fmt.w, fmt.h);
   else if (state.template === 'C') renderTemplateC(ctx, fmt.w, fmt.h);
-  else renderTemplateD(ctx, fmt.w, fmt.h);
+  else if (state.template === 'D') renderTemplateD(ctx, fmt.w, fmt.h);
+  else renderTemplateE(ctx, fmt.w, fmt.h);
 
   drawAllBadges(ctx, fmt.w, fmt.h);
 }
@@ -1392,13 +1493,15 @@ function applyTemplateLabels() {
   document.getElementById('field-show-photo-b').classList.toggle('is-hidden', state.template !== 'B');
   document.getElementById('field-ribbon-color').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-web').classList.toggle('is-hidden', state.template !== 'A');
-  document.getElementById('field-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
+  document.getElementById('field-editorial-en').classList.toggle('is-hidden', !(state.template === 'A' || state.template === 'E'));
   document.getElementById('field-show-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-editorial-horizontal-position').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-bg-color-d').classList.toggle('is-hidden', state.template !== 'D');
+  document.getElementById('field-bg-color-e').classList.toggle('is-hidden', state.template !== 'E');
+  document.getElementById('field-credit-lines').classList.toggle('is-hidden', state.template !== 'E');
   document.getElementById('field-headline-d').classList.toggle('is-hidden', state.template !== 'D');
   document.getElementById('field-logo-variant').classList.toggle('is-hidden', !(state.template === 'B' || state.template === 'C'));
-  document.getElementById('field-logo-color').classList.toggle('is-hidden', state.template === 'D');
+  document.getElementById('field-logo-color').classList.toggle('is-hidden', state.template === 'D' || state.template === 'E');
 }
 
 function buildTemplateSelector() {
@@ -1537,6 +1640,13 @@ function buildTextControls() {
     scheduleRedraw();
   });
 
+  const creditLine1 = document.getElementById('ctl-credit-line1');
+  const creditLine2 = document.getElementById('ctl-credit-line2');
+  creditLine1.value = state.texts.creditLine1;
+  creditLine2.value = state.texts.creditLine2;
+  creditLine1.addEventListener('input', () => { state.texts.creditLine1 = creditLine1.value; scheduleRedraw(); });
+  creditLine2.addEventListener('input', () => { state.texts.creditLine2 = creditLine2.value; scheduleRedraw(); });
+
   const editorialPositionWrap = document.getElementById('ctl-editorial-horizontal-position');
   editorialPositionWrap.querySelectorAll('button').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1631,6 +1741,11 @@ function buildColorControls() {
     'ctl-bg-color-d',
     () => state.bgColorD,
     (hex) => { state.bgColorD = hex; }
+  );
+  buildSwatchPicker(
+    'ctl-bg-color-e',
+    () => state.bgColorE,
+    (hex) => { state.bgColorE = hex; }
   );
 }
 
