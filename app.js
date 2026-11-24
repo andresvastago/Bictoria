@@ -821,46 +821,46 @@ function renderTemplateA(ctx, W, H) {
     if (H >= W) {
       // Columna vertical arquitectónica: ancho total EXACTO de la pestaña
       // superior derecha (tabW), estrictamente contenida entre tabLeftX y
-      // tabRightX, entre la base de la pestaña y la Banda 1.
+      // tabLeftX + tabW. Bucle de auto-escalado por decrementos fijos: nunca
+      // recorta ni descarta líneas, solo reduce fontSize hasta que TODAS las
+      // líneas quepan dentro de tabW.
       const tabW = 117 * uScale;
       const tabRightMargin = 63 * uScale;
       const tabLeftX = W - tabRightMargin - tabW;
-      const tabRightX = W - tabRightMargin;
       const tabBottomY = 182 * uScale; // tabH
 
-      const yStart = tabBottomY + 28 * uScale;
-      const yEnd = y1 - 28 * uScale;
-      const boxLength = yEnd - yStart;
+      const yStartBound = tabBottomY + 36 * uScale;
+      const yEndBound = y1 - 32 * uScale;
+      const boxLength = yEndBound - yStartBound;
 
       if (boxLength > 20) {
-        let fontSize = 18 * uScale;
-        let lineHeight = fontSize * 1.24;
-        ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
-        let lines = wrapText(ctx, state.texts.editorialEn, boxLength);
-        let totalColumnWidth = lines.length * lineHeight;
-        let guard = 0;
-        // Si el bloque de renglones apilados sobresale del ancho de la
-        // pestaña (tabW), reduce fontSize/lineHeight proporcionalmente.
-        while (totalColumnWidth > tabW && fontSize > 8 && guard < 10) {
-          fontSize *= Math.max(0.85, tabW / totalColumnWidth);
-          lineHeight = fontSize * 1.24;
+        const minFontSize = 10 * uScale;
+        let fontSize = 23 * uScale;
+        let lineHeight = fontSize * 1.22;
+        let lines = [];
+        while (fontSize >= minFontSize) {
           ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
           lines = wrapText(ctx, state.texts.editorialEn, boxLength);
-          totalColumnWidth = lines.length * lineHeight;
-          guard += 1;
+          lineHeight = fontSize * 1.22;
+          if (lines.length * lineHeight <= tabW) break;
+          fontSize -= 0.5 * uScale;
         }
+        fontSize = Math.max(fontSize, minFontSize);
 
-        // Centra el bloque (si quedó más angosto que tabW) entre tabLeftX y tabRightX.
-        const blockRightX = tabRightX - (tabW - totalColumnWidth) / 2;
+        // Interlineado final ajustado para llenar tabW exacto (sin exceder
+        // un máximo razonable de aire entre columnas cuando sobran líneas).
+        const finalLineHeight = Math.min(tabW / Math.max(lines.length, 1), 1.38 * fontSize);
+        const totalColumnWidth = lines.length * finalLineHeight;
+        const blockRightX = (tabLeftX + tabW) - (tabW - totalColumnWidth) / 2;
 
         ctx.save();
-        ctx.translate(blockRightX, yEnd);
+        ctx.translate(blockRightX, yEndBound);
         ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
         ctx.shadowBlur = 6 * uScale;
-        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxLength, -lineHeight, true);
+        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxLength, -finalLineHeight, true);
         ctx.restore();
       }
     } else {
