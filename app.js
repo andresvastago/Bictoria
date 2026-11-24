@@ -158,6 +158,7 @@ const state = {
   ribbonColor: COLORS.amarilloPalido,
   titleFontSizePt: 30, // controla el tamaño del nombre/título en todas las plantillas
   showEditorialEn: true, // columna vertical lateral en inglés (Plantilla A)
+  editorialHorizontalPosition: 'bottom', // 'bottom' | 'top' — solo aplica en formatos W > H
   badges: [], // { uid, defId, x, y, scale, rotation, backdrop }
   selectedBadgeUid: null,
 };
@@ -419,6 +420,34 @@ function getFittedFontSize(ctx, text, maxWidth, desiredPx, fontWeight, fontFamil
     return size;
   }
   return desiredPx;
+}
+
+// Texto justificado a ambos lados, incluido el último renglón por defecto —
+// genera intencionalmente los "ríos" tipográficos del estilo editorial.
+// lineHeight puede ser negativo (usado dentro de un contexto rotado para que
+// los renglones se apilen en la dirección opuesta al eje de lectura).
+function drawJustifiedText(ctx, text, x, y, boxWidth, lineHeight, justifyLastLine = true) {
+  const lines = wrapText(ctx, text, boxWidth);
+  let currentY = y;
+  lines.forEach((line, i) => {
+    const words = line.split(/\s+/).filter(Boolean);
+    if (words.length === 1) {
+      ctx.fillText(words[0], x, currentY);
+    } else if (i < lines.length - 1 || (justifyLastLine && words.length > 1)) {
+      const wordsWidth = words.reduce((acc, w) => acc + ctx.measureText(w).width, 0);
+      const totalSpace = Math.max(0, boxWidth - wordsWidth);
+      const gap = totalSpace / (words.length - 1);
+      let cursorX = x;
+      words.forEach((word) => {
+        ctx.fillText(word, cursorX, currentY);
+        cursorX += ctx.measureText(word).width + gap;
+      });
+    } else {
+      ctx.fillText(line, x, currentY);
+    }
+    currentY += lineHeight;
+  });
+  return lines.length;
 }
 
 function drawImageContain(ctx, img, cx, cy, maxW, maxH, align = 'center') {
@@ -744,42 +773,65 @@ function renderTemplateA(ctx, W, H) {
   const colSplit1 = W * 0.34;
   const colSplit2 = W * 0.683;
 
-  // ---- Columna vertical de párrafo editorial (estilo lookbook/streetwear) ----
-  // Se lee de abajo hacia arriba (rotación -90°), entre la pestaña superior
-  // derecha y la Banda 1, sin invadir ninguna de las dos.
+  // ---- Párrafo editorial en inglés (estilo lookbook/streetwear) ----
+  // Vertical/cuadrado (H >= W): columna lateral derecha rotada -90°, leída de
+  // abajo hacia arriba, con varios renglones justificados a ambos lados.
+  // Horizontal (W > H): franja multi-renglón arriba o abajo, sin rotar.
   if (state.showEditorialEn && state.texts.editorialEn) {
-    const colX = W * 0.935;
-    const yStart = 215 * uScale;
-    const yEnd = y1 - 24 * uScale;
-    const availableSpan = yEnd - yStart;
-    if (availableSpan > 20) {
-      const editorialFontFamily = "'DM Mono', monospace";
-      const minReadableFont = 14 * uScale;
-      let editorialFont = getFittedFontSize(ctx, state.texts.editorialEn, availableSpan, 22 * uScale, 400, editorialFontFamily);
-      let editorialText = state.texts.editorialEn;
-      if (editorialFont < minReadableFont) {
-        // Un párrafo demasiado largo para el espacio disponible nunca debe
-        // encogerse a un tamaño ilegible: se fija un piso legible y en su
-        // lugar se recorta el texto con elipsis hasta que quepa.
-        editorialFont = minReadableFont;
-        ctx.font = `400 ${Math.round(editorialFont)}px ${editorialFontFamily}`;
-        while (editorialText.length > 0 && ctx.measureText(`${editorialText}…`).width > availableSpan) {
-          editorialText = editorialText.slice(0, -1);
-        }
-        editorialText = `${editorialText.trimEnd()}…`;
+    const editorialFontFamily = "'DM Mono', monospace";
+    ctx.fillStyle = COLORS.marfil;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+
+    if (H >= W) {
+      // Columna lateral derecha, entre la pestaña superior y la Banda 1.
+      const colX = W * 0.935;
+      const yStart = 215 * uScale;
+      const yEnd = y1 - 24 * uScale;
+      const availableSpan = yEnd - yStart;
+      if (availableSpan > 20) {
+        const fontSize = 21 * uScale;
+        const lineHeight = fontSize * 1.25;
+        const boxWidth = Math.min(300 * uScale, availableSpan);
+        ctx.save();
+        ctx.translate(colX, yEnd);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
+        ctx.shadowBlur = 6 * uScale;
+        drawJustifiedText(ctx, state.texts.editorialEn, 0, 0, boxWidth, -lineHeight, true);
+        ctx.restore();
       }
-      ctx.save();
-      ctx.translate(colX, yEnd);
-      ctx.rotate(-Math.PI / 2);
+    } else {
+      // Formato horizontal: franja arriba o abajo, sin rotar.
+      const fontSize = 19 * uScale;
+      const lineHeight = fontSize * 1.22;
+      const marginL = 31 * uScale;
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.font = `400 ${Math.round(editorialFont)}px ${editorialFontFamily}`;
-      ctx.fillStyle = COLORS.marfil;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-      ctx.shadowBlur = 6 * uScale;
-      ctx.fillText(editorialText, 0, 0);
-      ctx.restore();
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = `400 ${Math.round(fontSize)}px ${editorialFontFamily}`;
+      ctx.shadowBlur = 5 * uScale;
+
+      if (state.editorialHorizontalPosition === 'top') {
+        const tabW = 117 * uScale;
+        const tabMarginR = 63 * uScale;
+        const tabX = W - tabMarginR - tabW;
+        const maxRightX = tabX - 28 * uScale;
+        const boxWidth = Math.max(0, maxRightX - marginL);
+        const startY = 28 * uScale + fontSize * 0.85;
+        if (boxWidth > 40) {
+          drawJustifiedText(ctx, state.texts.editorialEn, marginL, startY, boxWidth, lineHeight, true);
+        }
+      } else {
+        const boxWidth = W * 0.45;
+        const probeLines = wrapText(ctx, state.texts.editorialEn, boxWidth);
+        const blockHeight = probeLines.length * lineHeight;
+        const startY = y1 - 24 * uScale - blockHeight + fontSize * 0.85;
+        drawJustifiedText(ctx, state.texts.editorialEn, marginL, startY, boxWidth, lineHeight, true);
+      }
     }
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
   }
 
   // Columna izquierda — nombre + subtítulo.
@@ -1342,6 +1394,7 @@ function applyTemplateLabels() {
   document.getElementById('field-web').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-show-editorial-en').classList.toggle('is-hidden', state.template !== 'A');
+  document.getElementById('field-editorial-horizontal-position').classList.toggle('is-hidden', state.template !== 'A');
   document.getElementById('field-bg-color-d').classList.toggle('is-hidden', state.template !== 'D');
   document.getElementById('field-headline-d').classList.toggle('is-hidden', state.template !== 'D');
   document.getElementById('field-logo-variant').classList.toggle('is-hidden', !(state.template === 'B' || state.template === 'C'));
@@ -1482,6 +1535,15 @@ function buildTextControls() {
   showEditorialCheckbox.addEventListener('change', (e) => {
     state.showEditorialEn = e.target.checked;
     scheduleRedraw();
+  });
+
+  const editorialPositionWrap = document.getElementById('ctl-editorial-horizontal-position');
+  editorialPositionWrap.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.editorialHorizontalPosition = btn.dataset.position;
+      editorialPositionWrap.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+      scheduleRedraw();
+    });
   });
 
   const titleSizeSlider = document.getElementById('titleSizeSlider');
@@ -1717,6 +1779,38 @@ const exportModalState = {
   format: 'png',
 };
 
+// Fuerza una descarga fresca del PDF del manual, evitando que el navegador o
+// GitHub Pages sirvan una copia antigua desde caché cuando el archivo se
+// sobrescribe con el mismo nombre.
+async function downloadBrandManual(e) {
+  e.preventDefault();
+  const url = `./assets/Bictoria%20Brand.pdf?v=${Date.now()}`;
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const pdfBlob = blob.type === 'application/pdf' ? blob : blob.slice(0, blob.size, 'application/pdf');
+    const objectUrl = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = 'Bictoria Brand.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+  } catch (err) {
+    // Entorno local vía file:// u otra restricción de red: cae a la
+    // descarga directa normal del enlace.
+    console.warn('No se pudo forzar la descarga fresca del manual, usando enlace directo:', err);
+    const a = document.createElement('a');
+    a.href = './assets/Bictoria%20Brand.pdf';
+    a.download = 'Bictoria Brand.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
 function openExportModal() {
   document.getElementById('export-modal').classList.remove('is-hidden');
 }
@@ -1830,6 +1924,7 @@ async function generateLogoPack() {
 function buildResourceCenter() {
   // Blindaje: si algún ID cambió o falta en el HTML, usar encadenamiento
   // opcional evita un TypeError que detendría boot() antes del primer render.
+  document.getElementById('ctl-download-manual')?.addEventListener('click', downloadBrandManual);
   document.getElementById('ctl-open-export-modal')?.addEventListener('click', openExportModal);
   document.getElementById('export-modal-close')?.addEventListener('click', closeExportModal);
   document.getElementById('export-modal-overlay')?.addEventListener('click', closeExportModal);

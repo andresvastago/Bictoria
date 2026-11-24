@@ -118,6 +118,13 @@
         <input type="checkbox" id="ctl-show-editorial-en" checked>
         Mostrar párrafo vertical en ficha
       </label>
+      <div class="field" id="field-editorial-horizontal-position">
+        <label>Posición en horizontal</label>
+        <div class="segmented small" id="ctl-editorial-horizontal-position">
+          <button type="button" data-position="bottom" class="active">Abajo (sobre remate/franja)</button>
+          <button type="button" data-position="top">Arriba (borde superior)</button>
+        </div>
+      </div>
       <div class="field" id="field-secondary">
         <label id="label-secondary">Texto secundario</label>
         <textarea id="ctl-secondary" maxlength="120" rows="2"></textarea>
@@ -187,7 +194,7 @@
       <h2>8 · Centro de Recursos</h2>
       <p class="hint">Archivos de marca listos para imprenta, redes o el equipo de diseño del cliente.</p>
       <div class="resource-buttons">
-        <a href="./assets/Bictoria%20Brand.pdf" download class="btn-outline">📄 Descargar Manual de Marca</a>
+        <a href="./assets/Bictoria%20Brand.pdf" download="Bictoria Brand.pdf" class="btn-outline" id="ctl-download-manual">📄 Descargar Manual de Marca</a>
         <button type="button" class="btn-outline" id="ctl-open-export-modal">📦 Descargar Pack de Logotipos</button>
       </div>
     </section>
